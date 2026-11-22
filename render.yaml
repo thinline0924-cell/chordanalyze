@@ -3,7 +3,7 @@
 # 追加のパッケージは使わないので、npm install で何も入りません。APIキーや合言葉の設定もいりません。
 services:
   - type: web
-    name: chord-note
+    name: chordanalyze
     runtime: node
     plan: free
     buildCommand: npm install

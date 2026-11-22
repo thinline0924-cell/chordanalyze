@@ -27,7 +27,7 @@ URL の読み込みのために、小さなサーバー(`server.js`)が動きま
 
 ### 1. GitHub に新しいリポジトリを作ってファイルを上げる
 
-1. <https://github.com/new> で新しいリポジトリを作ります(名前の例:`chord-note`)
+1. <https://github.com/new> で新しいリポジトリを作ります(名前の例:`chordanalyze`)
 2. 「uploading an existing file」を押し、このフォルダの中身を**フォルダごと**ドラッグします
    - `index.html` `style.css` `server.js` `package.json` `render.yaml` `README.md` `CLAUDE.md`
    - `js/` フォルダ、`lib/` フォルダ、`tests/` フォルダ、`.github/` フォルダ
@@ -40,7 +40,7 @@ URL の読み込みのために、小さなサーバー(`server.js`)が動きま
 2. 右上の「New +」→「**Blueprint**」を選びます
 3. 1 で作ったリポジトリを選びます
 4. 「Apply」(または「Deploy」)を押します。入力する設定はありません
-5. 数分待つと `https://chord-note〜.onrender.com` のアドレスで開けます
+5. 数分待つと `https://chordanalyze.onrender.com`(この名前がほかの人に使われているときは、後ろに文字が付きます) のアドレスで開けます
 
 Web サービス(無料プラン)は、15分ほど使わないと眠ります。眠っているときに開くと、最初の表示まで1分ほどかかります。
 
