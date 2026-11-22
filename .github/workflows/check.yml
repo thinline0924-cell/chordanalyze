@@ -1,0 +1,12 @@
+# GitHub に上げるたびに、データと計算の点検(tests/check.js)を自動で走らせる
+name: check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tests/check.js

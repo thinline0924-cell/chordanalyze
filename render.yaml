@@ -1,0 +1,14 @@
+# Render Blueprint(設計図):CHORD NOTE を「Web サービス」として公開する
+# 曲のページの URL を読み込む機能のために、小さなサーバー(server.js)を動かします。
+# 追加のパッケージは使わないので、npm install で何も入りません。APIキーや合言葉の設定もいりません。
+services:
+  - type: web
+    name: chord-note
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
