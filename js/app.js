@@ -48,6 +48,10 @@ const INDEX = [
 ];
 const pageOf = () => { const h = location.hash.slice(1).split('=')[0]; return PAGES.some(p => p.id === h) ? h : 'top'; };
 const pad = n => String(n).padStart(2, '0');
+const NARROW = window.matchMedia('(max-width: 820px)');
+const isNarrow = () => NARROW.matches;
+// 指板:スマホは 0〜7 と 8〜15 の2段にする
+const fretParts = (marks, aria) => isNarrow() ? fretSVG(marks, aria, 0, 7, 8) + fretSVG(marks, aria, 7, 15, 8) : fretSVG(marks, aria);
 const catName = id => CATS.find(c => c[0] === id)[1];
 const keyLabel = mode => tonicName(S.key, mode) + (mode === 'minor' ? 'm' : '');
 const keyMeta = mode => `Key<b>${keyLabel(mode || 'major')}</b>`;
@@ -86,7 +90,7 @@ function chordBtn(t, mode, top, extra = '') {
 function chartHTML(src, mode, pid) {
   let ci = 0;
   const bars = src.split('|').map(b => b.trim().split(/\s+/));
-  return `<div class="chart">${bars.map(b => `<div class="bar">${b.map(t => chordBtn(t, mode, null, pid ? ` data-pid="${pid}" data-ci="${ci++}"` : '')).join('')}</div>`).join('')}</div>`;
+  return `<div class="chart${bars.some(b => b.length > 1) ? ' dense' : ''}">${bars.map(b => `<div class="bar">${b.map(t => chordBtn(t, mode, null, pid ? ` data-pid="${pid}" data-ci="${ci++}"` : '')).join('')}</div>`).join('')}</div>`;
 }
 const playBtn = id => `<button class="sbtn" data-play="${id}">${Organ.playingId === id ? '<i class="sq"></i>停止' : '<i class="tri"></i>再生'}</button>`;
 const labelSeg = () => `<div class="seg" role="group" aria-label="図の文字"><button aria-pressed="${S.label === 'deg'}" data-label="deg">度数</button><button aria-pressed="${S.label === 'note'}" data-label="note">音名</button></div>`;
@@ -137,7 +141,7 @@ function scaleRow(sc, i) {
   <div class="act">${playBtn(pid)}</div>
   ${open ? `<dl class="det"><dt>合うコード</dt><dd>${sc.fit}</dd><dt>解説</dt><dd>${sc.note}</dd>
     <dt>譜面</dt><dd><div class="figs-s"><div>${staffScaleSVG(r, sc.name)}</div></div></dd>
-    <dt>指板</dt><dd><div class="fbw">${fretSVG(scaleMarks(r, S.label), sc.name + ' の指板')}</div></dd></dl>` : ''}
+    <dt>指板</dt><dd><div class="fbw">${fretParts(scaleMarks(r, S.label), sc.name + ' の指板')}</div></dd></dl>` : ''}
 </article>`;
 }
 
@@ -177,7 +181,7 @@ function pageDiatonic() {
   const toks = diatonicToks(d, S.dsize);
   const chords = toks.map(t => chordOf(t, S.key, d.mode));
   return crumb([['ホーム', '#top'], ['ダイアトニック', '#diatonic'], [d.name]]) + head('Diatonic', 'ダイアトニック', keyMeta(d.mode)) +
-    `<div class="tabs" role="tablist">${DIATONIC.map(x => `<button role="tab" aria-selected="${x.id === d.id}" data-dmode="${x.id}">${x.name}</button>`).join('')}</div>
+    `<div class="tabs" role="tablist">${DIATONIC.map(x => `<button role="tab" aria-selected="${x.id === d.id}" data-dmode="${x.id}">${x.name.replace(/(.)マイナー$/, '$1<span class="wide-only">マイナー</span>')}</button>`).join('')}</div>
      <div class="bar-tools"><div class="seg" role="group" aria-label="和音の数"><button aria-pressed="${S.dsize === 3}" data-dsize="3">3和音</button><button aria-pressed="${S.dsize === 4}" data-dsize="4">4和音</button></div></div>
      <div class="dtw"><table class="dt">
       <thead><tr><th></th>${chords.map(c => `<th>${c.degree}</th>`).join('')}</tr></thead>
@@ -187,6 +191,9 @@ function pageDiatonic() {
        <tr><th>機能</th>${d.fn.map(f => `<td><span class="fn fn-${f}">${f}</span></td>`).join('')}</tr>
        <tr><th>構成音</th>${chords.map(c => `<td class="en">${c.tones.map(t => t.name).join(' ')}</td>`).join('')}</tr>
       </tbody></table></div>
+     <table class="dt-v"><thead><tr><th>度数</th><th>コード</th><th>機能</th><th>構成音</th></tr></thead><tbody>
+      ${chords.map((c, i) => `<tr><th>${c.degree}</th><td class="c">${chordBtn(toks[i], d.mode).replace(/<span class="d">.*?<\/span>/, '')}</td><td><span class="fn fn-${d.fn[i]}">${d.fn[i]}</span></td><td class="en">${c.tones.map(t => t.name).join(' ')}</td></tr>`).join('')}
+     </tbody></table>
      <div class="legend"><span>T トニック(落ち着く)</span><span>SD サブドミナント(広がる)</span><span>D ドミナント(戻りたくなる)</span></div>
      <p class="note-s">${d.sub}</p>` + pager('diatonic');
 }
@@ -336,7 +343,8 @@ function anaResult(r) {
         const br = brOf(ii);
         // くくりの両端の印は、進行の本当の始まりと終わりだけ(行をまたぐときは途中を開いたままにする)
         const brc = br ? ` br${ii === br.a ? ' br-s' : ''}${ii === br.z ? ' br-e' : ''}` : '';
-        const brl = br && ii === br.a ? `<a class="br-l" href="#progression" data-go="progression:${br.p.id}">${esc(br.p.name)}</a>` : '';
+        const brSpan = br && ii === br.a ? line.slice(k).filter(([, j]) => j <= br.z).length : 0;
+        const brl = br && ii === br.a ? `<a class="br-l" href="#progression" data-go="progression:${br.p.id}" style="--span:${brSpan}" title="${esc(br.p.name)}">${esc(br.p.name)}</a>` : '';
         if (x.bad) return `<div class="cell${brc}">${brl}<span class="ch bad" data-pid="${pid}" data-ci="${ii}"><span class="d">?</span><span class="n">${esc(x.sym)}</span></span></div>`;
         const name = S.av === 'sel' ? chordOf(x.tok, kp, b.key.mode).name : Analyzer.pretty(x.sym);
         const mk = marks.get(x);
@@ -378,17 +386,36 @@ function rerenderRow(el) {
 }
 
 /* ---------- コード詳細パネル ---------- */
-function openPanel(tok, mode, kp) {
-  S.panel = { tok, mode, kp };   // kp:分析の譜面から開いたときだけ、その曲のキー
-  renderPanel();
-  $('#panel').hidden = false;
-  document.body.classList.add('has-panel');
+// 詳細パネルを開け閉めすると本文の幅や余白が変わるので、押したコードが画面の同じ位置に残るように、そのぶんスクロールを戻す
+function keepAnchor(el, change) {
+  const top = el && el.isConnected ? el.getBoundingClientRect().top : null;
+  change();
+  if (top != null && el.isConnected) window.scrollBy(0, el.getBoundingClientRect().top - top);
+}
+// スマホ:パネルは下から出るので、押したコードがパネルに隠れたら、パネルの上に見えるところまで上げる
+function revealAbovePanel(el) {
+  if (!el || !el.isConnected || !isNarrow()) return;
+  // パネルは下からせり上がる動きがあるので、見た目の位置ではなく、最終的な高さから上端を出す
+  const limit = innerHeight - $('#panel').offsetHeight - 12, r = el.getBoundingClientRect();
+  if (r.bottom > limit) window.scrollBy(0, r.bottom - limit);
+}
+function openPanel(tok, mode, kp, anchor) {
+  keepAnchor(anchor, () => {
+    S.panel = { tok, mode, kp };   // kp:分析の譜面から開いたときだけ、その曲のキー
+    renderPanel();
+    $('#panel').hidden = false;
+    document.body.classList.add('has-panel');
+  });
   markCurrent();
+  revealAbovePanel(anchor);
 }
 function closePanel() {
-  S.panel = null;
-  $('#panel').hidden = true;
-  document.body.classList.remove('has-panel');
+  const anchor = $$('.ch.is-current').find(b => { const r = b.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; });
+  keepAnchor(anchor, () => {
+    S.panel = null;
+    $('#panel').hidden = true;
+    document.body.classList.remove('has-panel');
+  });
   markCurrent();
 }
 function markCurrent() {
@@ -413,7 +440,7 @@ function renderPanel() {
     <figure>${diagSVG(c, 5, S.label)}<figcaption>5弦ルート</figcaption></figure>
   </div>
   <div class="p-sec"><span class="p-h">指板<small>0–15f</small></span></div>
-  <div class="fbw">${fretSVG(chordMarks(c, S.label), c.name + ' の指板')}</div>
+  <div class="fbw">${fretParts(chordMarks(c, S.label), c.name + ' の指板')}</div>
   <div class="p-sec"><span class="p-h">テンション</span></div>
   ${tensionTable(c)}`;
 }
@@ -529,7 +556,7 @@ document.addEventListener('click', e => {
     renderKeys(); render(); renderPanel();
     return;
   }
-  if (d.tok) { const kp = d.kp != null ? +d.kp : null; Organ.chord(chordOf(d.tok, kp != null ? kp : S.key, d.mode)); openPanel(d.tok, d.mode, kp); return; }
+  if (d.tok) { const kp = d.kp != null ? +d.kp : null; Organ.chord(chordOf(d.tok, kp != null ? kp : S.key, d.mode)); openPanel(d.tok, d.mode, kp, t); return; }
   if (d.play) { play(d.play); return; }
   if (d.toggle) { S.open.has(d.toggle) ? S.open.delete(d.toggle) : S.open.add(d.toggle); rerenderRow(d.toggle); return; }
   if (d.tab) { S.tab = d.tab; store.set('tab', S.tab); Organ.stop(); render(); return; }
@@ -608,11 +635,14 @@ function cleanSong(x) {
 window.addEventListener('hashchange', () => {
   takeHashSong();
   const keep = !!S.scrollTo;
-  Organ.stop(); closeOverlays(); render();
+  Organ.stop(); closeOverlays();
+  if (S.panel) { S.panel = null; $('#panel').hidden = true; document.body.classList.remove('has-panel'); }
+  render();
   if (!keep) window.scrollTo(0, 0);
 });
 function setHdh() { document.documentElement.style.setProperty('--hdh', ($('#hd > .wrap').offsetHeight + 1) + 'px'); }
 window.addEventListener('resize', setHdh);
+NARROW.addEventListener('change', () => { render(); renderPanel(); });
 
 buildSearch();
 renderKeys();

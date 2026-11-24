@@ -61,22 +61,27 @@ function diagSVG(c, rs, labelMode) {
 
 /* ---------- 指板(横長、0〜15フレット) ----------
    marks: [{pc, label, root}] */
-function fretSVG(marks, aria) {
+// a〜b フレットの範囲を描く(スマホでは 0〜7 と 8〜15 の2段に分けて、横スクロールなしで見られるようにする)
+// cols:描く欄の数(2段の幅をそろえるため)
+function fretSVG(marks, aria, a = 0, b = 15, cols = b - a) {
   const by = new Map(marks.map(m => [m.pc, m]));
   const TOP = [4, 11, 7, 2, 9, 4]; // 1弦→6弦
-  const CW = 32, L = 36, T = 14, SY = 19, N = 15, W = L + N * CW + 8, H = T + 5 * SY + 30;
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${aria}">`;
-  [3, 5, 7, 9, 15].forEach(f => (s += `<circle class="s-inlay" cx="${L + (f - 0.5) * CW}" cy="${T + 2.5 * SY}" r="4"/>`));
-  s += `<circle class="s-inlay" cx="${L + 11.5 * CW}" cy="${T + 1.5 * SY}" r="4"/><circle class="s-inlay" cx="${L + 11.5 * CW}" cy="${T + 3.5 * SY}" r="4"/>`;
-  for (let f = 1; f <= N; f++) s += `<line class="s-thin" x1="${L + f * CW}" x2="${L + f * CW}" y1="${T}" y2="${T + 5 * SY}" stroke-width="1"/>`;
-  s += `<line class="s-line" x1="${L}" x2="${L}" y1="${T}" y2="${T + 5 * SY}" stroke-width="3"/>`;
-  for (let i = 0; i < 6; i++) s += `<line class="s-line" x1="${L - 24}" x2="${L + N * CW}" y1="${T + i * SY}" y2="${T + i * SY}" stroke-width="${0.6 + i * 0.16}"/>`;
-  [3, 5, 7, 9, 12, 15].forEach(f => (s += `<text class="s-txt-s" x="${L + (f - 0.5) * CW}" y="${H - 8}" font-size="10" text-anchor="middle">${f}</text>`));
+  const CW = 32, L = 36, T = 14, SY = 19, N = b - a, W = L + Math.max(N, cols) * CW + 8, H = T + 5 * SY + 30;
+  const xc = f => L + (f - a - 0.5) * CW;
+  const inR = f => f > a && f <= b;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${aria}${a ? `(${a + 1}〜${b}フレット)` : ''}">`;
+  [3, 5, 7, 9, 15].filter(inR).forEach(f => (s += `<circle class="s-inlay" cx="${xc(f)}" cy="${T + 2.5 * SY}" r="4"/>`));
+  if (inR(12)) s += `<circle class="s-inlay" cx="${xc(12)}" cy="${T + 1.5 * SY}" r="4"/><circle class="s-inlay" cx="${xc(12)}" cy="${T + 3.5 * SY}" r="4"/>`;
+  for (let f = a + 1; f <= b; f++) s += `<line class="s-thin" x1="${L + (f - a) * CW}" x2="${L + (f - a) * CW}" y1="${T}" y2="${T + 5 * SY}" stroke-width="1"/>`;
+  s += `<line class="${a === 0 ? 's-line' : 's-thin'}" x1="${L}" x2="${L}" y1="${T}" y2="${T + 5 * SY}" stroke-width="${a === 0 ? 3 : 1}"/>`;
+  for (let i = 0; i < 6; i++) s += `<line class="s-line" x1="${a === 0 ? L - 24 : L}" x2="${L + N * CW}" y1="${T + i * SY}" y2="${T + i * SY}" stroke-width="${0.6 + i * 0.16}"/>`;
+  [3, 5, 7, 9, 12, 15].filter(inR).forEach(f => (s += `<text class="s-txt-s" x="${xc(f)}" y="${H - 8}" font-size="10" text-anchor="middle">${f}</text>`));
   TOP.forEach((o, i) => {
-    for (let f = 0; f <= N; f++) {
+    for (let f = a; f <= b; f++) {
+      if (f === a && a !== 0) continue;
       const m = by.get(mod(o + f, 12));
       if (!m) continue;
-      s += SVGS.dot(f === 0 ? L - 14 : L + (f - 0.5) * CW, T + i * SY, 8.4, m.label, m.root);
+      s += SVGS.dot(f === 0 ? L - 14 : xc(f), T + i * SY, 8.4, m.label, m.root);
     }
   });
   return s + '</svg>';

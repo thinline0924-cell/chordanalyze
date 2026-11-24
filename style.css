@@ -455,3 +455,42 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 @media (max-width: 820px) {
   .aline { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* ---------- スマホで横幅に収める ---------- */
+.dt-v { display: none; }
+.br-l { max-width: calc(var(--span, 1) * 100% - 6px); overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 820px) {
+  /* キー:12個を1列にそろえて収める */
+  .hd-2 .lbl { display: none; }
+  .keys { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); overflow: visible; flex: 1 1 auto; }
+  .keys button { min-width: 0; padding: 0; font-size: 12px; letter-spacing: 0; }
+  /* タブ:短い名前にする */
+  .wide-only { display: none; }
+  .tabs { gap: 18px; }
+  /* ダイアトニック:縦の表 */
+  .dtw { display: none; }
+  .dt-v { display: table; width: 100%; border-collapse: collapse; border-top: 1px solid var(--ink); font-variant-numeric: tabular-nums; }
+  .dt-v th, .dt-v td { border-bottom: 1px solid var(--line); padding: 6px 8px 6px 0; text-align: left; vertical-align: middle; font-weight: 400; }
+  .dt-v thead th { font-size: 11px; color: var(--sub); }
+  .dt-v tbody th { font-size: 13px; color: var(--sub); width: 64px; white-space: nowrap; }
+  .dt-v td { font-size: 12px; }
+  .dt-v td.c { padding: 0; }
+  .dt-v td.c .ch { padding: 6px 8px 6px 0; }
+  .dt-v td.c .ch .n { font-size: 16px; }
+  /* 1小節に2つのコードがある譜面:1行2小節 */
+  .chart.dense { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chart.dense .bar:nth-child(2n) { border-right: 1px solid var(--ink); }
+  /* 指板:2段に分けて横スクロールなし */
+  .fbw { overflow: visible; }
+  .fbw svg { min-width: 0; width: 100%; }
+  .fbw svg + svg { margin-top: 4px; }
+  /* 下から出るパネルの下に隠れないよう、本文の下に余白を足す */
+  body.has-panel #view { padding-bottom: 84vh; }
+}
+@media (max-width: 820px) {
+  /* 下から出るパネルは画面の6割まで。押したコードがパネルの上に見えるようにする(パネルの中はスクロール) */
+  .panel { max-height: 60vh; }
+  body.has-panel #view { padding-bottom: 62vh; }
+  .tabs { gap: 12px; }
+  .tabs button { font-size: 13px; }
+}
