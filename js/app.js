@@ -24,7 +24,7 @@ const S = {
   ana: null,                                // 分析の結果
   songs: store.get('songs', []),            // 保存した曲
   av: 'orig',                               // 譜面の表示:orig 原曲キー / sel 選んだキー
-  impUrl: '', pasteText: '', anaPaste: false, anaBusy: false, anaErr: '',
+  impUrl: '', pasteText: '', anaPaste: false, anaBusy: false, anaErr: '', bmNote: '',
 };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 if (!(S.key >= 0 && S.key < 12)) S.key = 0;
@@ -47,7 +47,7 @@ const INDEX = [
   { page: 'tension', items: [...TENSION_ITEMS.map(t => [t.id, t.name]), ['guide', 'ドミナントのテンションの選び方']] },
   { page: 'scale', items: [...SCALES.map(s => [s.id, s.name]), ['map', 'コードとスケールの対応表']], cols2: true },
 ];
-const pageOf = () => { const h = location.hash.slice(1); return PAGES.some(p => p.id === h) ? h : 'top'; };
+const pageOf = () => { const h = location.hash.slice(1).split('=')[0]; return PAGES.some(p => p.id === h) ? h : 'top'; };
 const pad = n => String(n).padStart(2, '0');
 const catName = id => CATS.find(c => c[0] === id)[1];
 const keyLabel = mode => tonicName(S.key, mode) + (mode === 'minor' ? 'm' : '');
@@ -261,12 +261,17 @@ function pageAnalyze() {
   const r = S.ana;
   let h = crumb([['索引', '#top'], ['分析']]) + head('Analyze', '分析', r ? `Key<b>${esc(r.key.name)}</b>` : '');
   h += `<form class="imp" id="impForm" autocomplete="off" novalidate>
-    <label class="sub-h" for="impUrl">U-FRET か ChordWiki の曲のページの URL</label>
+    <label class="sub-h" for="impUrl">U-FRET の曲のページの URL</label>
     <div class="imp-row"><input id="impUrl" type="url" inputmode="url" placeholder="https://www.ufret.jp/song.php?data=…" value="${esc(S.impUrl)}">
       <button class="btn-dark" type="submit"${S.anaBusy ? ' disabled' : ''}>${S.anaBusy ? '読み込み中' : '分析する'}<span class="arw r" aria-hidden="true"></span></button></div>
-    <p class="note-s">歌詞は読み込まず、コードだけを使います。</p>
+    <p class="note-s">歌詞は読み込まず、コードだけを使います。ChordWiki はサーバーから読めないので、下のブックマークレットか貼り付けを使います。</p>
     ${S.anaErr ? `<p class="err" role="alert">${esc(S.anaErr)}</p>` : ''}
     <button type="button" class="lnk" data-paste-toggle aria-expanded="${S.anaPaste}">コードを貼り付けて分析する</button>
+    <div class="bmk"><div class="sub-h">ブックマークレット(U-FRET・ChordWiki)</div>
+      <div class="bmk-row"><a class="bm" href="${esc(bookmarkletHref(location.origin))}" data-bm title="ブックマークバーにドラッグして登録">CHORD NOTE で分析</a>
+      <p class="note-s">この枠をブックマークバーへドラッグして登録します。U-FRET か ChordWiki の曲のページを開いて押すと、ここで分析します。</p></div>
+      <button type="button" class="lnk" data-bm-copy>スマホで登録する(コードをコピー)</button>
+      ${S.bmNote ? `<p class="note-s" role="status">${esc(S.bmNote)}</p>` : ''}</div>
     ${S.anaPaste ? `<div class="paste"><textarea id="impText" rows="7" placeholder="例&#10;[Aメロ]&#10;C G Am F&#10;FM7 G7 Em7 Am">${esc(S.pasteText)}</textarea><button type="button" class="sbtn" data-paste-go>貼り付けたコードを分析する</button></div>` : ''}
   </form>`;
   if (r) h += anaResult(r);
@@ -516,6 +521,14 @@ document.addEventListener('click', e => {
   if (d.av) { S.av = d.av; render(); return; }
   if (d.pasteToggle != null) { S.anaPaste = !S.anaPaste; render(); if (S.anaPaste) $('#impText').focus(); return; }
   if (d.pasteGo != null) { analyzePasted(); return; }
+  if (d.bm != null) { e.preventDefault(); S.bmNote = 'この枠は押すのではなく、ブックマークバーへドラッグして登録します。'; render(); return; }
+  if (d.bmCopy != null) {
+    const href = bookmarkletHref(location.origin);
+    const done = () => { S.bmNote = 'コピーしました。ブラウザでこのページをブックマークに追加し、その「URL(アドレス)」の欄を、コピーした文字に置き換えて保存してください。名前は「CHORD NOTE で分析」などにします。'; render(); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(href).then(done, () => { S.bmNote = 'コピーできませんでした。PC でブックマークバーへドラッグして登録してください。'; render(); });
+    else { S.bmNote = 'このブラウザではコピーできません。PC でブックマークバーへドラッグして登録してください。'; render(); }
+    return;
+  }
   if (d.songSave != null) { toggleSaveSong(); return; }
   if (d.songOpen) { const sg = S.songs.find(x => x.id === d.songOpen); if (sg) { S.anaErr = ''; setSong(sg); S.scrollTo = 'a-res'; render(); } return; }
   if (d.songDel) { S.songs = S.songs.filter(x => x.id !== d.songDel); store.set('songs', S.songs); render(); return; }
@@ -546,13 +559,42 @@ document.addEventListener('submit', e => {
   e.preventDefault();
   const v = $('#impUrl').value.trim();
   if (!v) { S.anaErr = 'URL を入れてください。'; render(); return; }
+  if (/chordwiki\.org/i.test(v)) { S.impUrl = v; S.anaErr = 'ChordWiki は、相手のサイトの仕組み(Cloudflare)でサーバーから読み込めません。下の「ブックマークレット」を使うか、ページのコードを「貼り付け」てください。'; render(); return; }
   if (!S.anaBusy) importUrl(v);
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'impUrl') S.impUrl = e.target.value;
   if (e.target.id === 'impText') S.pasteText = e.target.value;
 });
+// ブックマークレットから来たとき:# の後ろの曲データ(コードだけ)を読む
+function takeHashSong() {
+  const h = location.hash;
+  if (!h.startsWith('#analyze=')) return false;
+  let song = null;
+  try { song = cleanSong(JSON.parse(decodeURIComponent(h.slice('#analyze='.length)))); } catch (e) { song = null; }
+  history.replaceState(null, '', '#analyze');
+  if (!song) { S.anaErr = 'ブックマークレットから受け取ったデータを読めませんでした。'; return true; }
+  S.anaErr = ''; S.impUrl = song.url || '';
+  setSong(song); S.scrollTo = 'a-res';
+  return true;
+}
+// 受け取ったデータの形と大きさを確かめる(よその人が作ったリンクでも安全なように)
+function cleanSong(x) {
+  if (!x || !Array.isArray(x.sections)) return null;
+  const str = (v, n) => String(v == null ? '' : v).slice(0, n);
+  let total = 0;
+  const sections = x.sections.slice(0, 200).map(sec => ({
+    label: str(sec && sec.label, 40),
+    lines: (Array.isArray(sec && sec.lines) ? sec.lines : []).slice(0, 200)
+      .map(l => (Array.isArray(l) ? l : []).slice(0, 40).map(c => str(c, 24).trim()).filter(c => c && (total++ < 4000))).filter(l => l.length),
+  })).filter(sec => sec.lines.length);
+  if (!sections.length) return null;
+  const url = /^https:\/\/[^\s]+$/.test(String(x.url || '')) ? str(x.url, 300) : '';
+  const source = ['ufret', 'chordwiki'].includes(x.source) ? x.source : 'paste';
+  return { title: str(x.title, 100), artist: str(x.artist, 100), source, url, keyHint: '', sections };
+}
 window.addEventListener('hashchange', () => {
+  takeHashSong();
   const keep = !!S.scrollTo;
   Organ.stop(); closeOverlays(); render();
   if (!keep) window.scrollTo(0, 0);
@@ -562,6 +604,7 @@ window.addEventListener('resize', setHdh);
 
 buildSearch();
 renderKeys();
+takeHashSong();
 render();
 setHdh();
 if (document.fonts) document.fonts.ready.then(setHdh);

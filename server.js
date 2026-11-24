@@ -1,7 +1,8 @@
 /* =========================================================
    CHORD NOTE のサーバー
    - サイトのファイル(index.html・style.css・js/)を配る
-   - /api/import?url=… で U-FRET / ChordWiki の曲のページを読み、コードだけを返す(歌詞は返さない)
+   - /api/import?url=… で U-FRET の曲のページを読み、コードだけを返す(歌詞は返さない)
+     ChordWiki は読まない(Cloudflare で止められているため。js/bookmarklet.js で読む)
    追加のパッケージは使わない(Node.js 20 以上の標準機能だけ)。起動:node server.js
    ========================================================= */
 const http = require('node:http');

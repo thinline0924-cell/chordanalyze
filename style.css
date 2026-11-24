@@ -376,3 +376,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   body.has-panel .flow li { grid-template-columns: 34px minmax(0, 1fr) 30px; }
   body.has-panel .flow li p { grid-column: 2 / -1; }
 }
+
+/* ブックマークレット */
+.bmk { display: grid; gap: 6px; padding-top: 14px; margin-top: 4px; border-top: 1px solid var(--line); }
+.bmk-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.bm { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border: 1px dashed var(--ink); background: var(--paper); font-size: 13px; text-decoration: none; cursor: grab; white-space: nowrap; }
+.bm:hover { background: var(--wash); }
+.bmk-row .note-s { margin: 0; flex: 1 1 260px; }

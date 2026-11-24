@@ -12,9 +12,12 @@
 
 1. **ビルドツールを入れない。** 素の HTML / CSS / JavaScript。React・Vite・TypeScript・bundler・npm パッケージは使わない
 2. **API キーを使わない。AI に解説を書かせない**(持ち主が「ルールで判定」を選んだ)。
-   サーバー(`server.js`)は、U-FRET / ChordWiki の URL を読むためだけにある(持ち主が URL の貼り付けを選んだため。ブラウザからは CORS で直接読めない)。
+   サーバー(`server.js`)は、U-FRET の URL を読むためだけにある(持ち主が URL の貼り付けを選んだため。ブラウザからは CORS で直接読めない)。
    - npm パッケージを入れない(Node.js の標準機能だけ)
-   - 読みに行けるのは `www.ufret.jp/song.php?data=数字` と `ch.chordwiki.org/wiki.cgi?…&t=…` だけ(lib/parse.js の checkUrl)。ほかの URL を読めるようにしない
+   - 読みに行けるのは `www.ufret.jp/song.php?data=数字` だけ(lib/parse.js の checkUrl)。ほかの URL を読めるようにしない
+   - **ChordWiki(ja.chordwiki.org)は Cloudflare でプログラムからの読み込みを止めている。すり抜けない**(ブラウザのふりをする、ヘッドレスブラウザを使う、などはしない。持ち主にも説明して合意済み)。
+     ChordWiki は `js/bookmarklet.js`(ブックマークレット)で、持ち主が開いているページからコードだけを取り出し、`#analyze=…` で分析ページに渡す
+   - ブックマークレットは登録時に改行が消えても動くよう、`//` コメントを書かず、文の終わりに `;` を付ける
    - **歌詞は返さない・保存しない**(サーバーでコードだけにする)。回数制限(10分30回/IP)と、同じ曲を1時間覚えておく仕組みを外さない
    - 配るファイルは index.html・style.css・js/ だけ(server.js の PUBLIC)
 3. **見た目の方針を崩さない**(持ち主が「AIっぽくしない」ことを強く希望):
