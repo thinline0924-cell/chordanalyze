@@ -39,17 +39,39 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
-async function fetchPage(url) {
+// 読み込みに失敗したとき、理由が分かる日本語にする(画面にも出す)
+function fetchError(e, status) {
+  if (status === 403 || status === 429 || status === 503) return `相手のサイトに読み込みを断られました(${status})。この曲は「コードを貼り付けて分析する」を使ってください。`;
+  if (status) return `相手のサイトがエラーを返しました(${status})。少し待ってから、もう一度試してください。`;
+  if (e && e.name === 'AbortError') return '相手のサイトの応答が遅く、時間切れになりました(15秒)。少し待ってから、もう一度試してください。';
+  const code = (e && e.cause && (e.cause.code || e.cause.name)) || (e && e.code) || '';
+  return `相手のサイトにつながりませんでした${code ? `(${code})` : ''}。このサーバー(海外にあります)からは読めない可能性があります。この曲は「コードを貼り付けて分析する」を使ってください。`;
+}
+async function fetchOnce(url) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 12000);
+  const timer = setTimeout(() => ctrl.abort(), 15000);
   try {
     const r = await fetch(url, { signal: ctrl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChordNote/1.0)', 'Accept-Language': 'ja' } });
     if (r.status === 404) { const e = new Error('曲のページが見つかりませんでした(URL を確かめてください)。'); e.user = true; throw e; }
-    if (!r.ok) throw new Error('status ' + r.status);
+    if (!r.ok) { const e = new Error(fetchError(null, r.status)); e.user = true; e.status = r.status; throw e; }
     const buf = Buffer.from(await r.arrayBuffer());
-    if (buf.length > MAX_BYTES) throw new Error('too large');
+    if (buf.length > MAX_BYTES) { const e = new Error('ページが大きすぎて読み込めませんでした。'); e.user = true; throw e; }
     return buf.toString('utf8');
   } finally { clearTimeout(timer); }
+}
+async function fetchPage(url) {
+  try { return await fetchOnce(url); }
+  catch (e) {
+    if (e.user) throw e;
+    console.error('fetch failed (1回目)', url, e.name, e.cause && e.cause.code);
+    await new Promise(r => setTimeout(r, 800));
+    try { return await fetchOnce(url); }   // つながらなかったときだけ、1回だけやり直す
+    catch (e2) {
+      if (e2.user) throw e2;
+      console.error('fetch failed (2回目)', url, e2.name, e2.cause && e2.cause.code);
+      const err = new Error(fetchError(e2)); err.user = true; throw err;
+    }
+  }
 }
 
 async function handleImport(req, res, q) {
@@ -66,7 +88,7 @@ async function handleImport(req, res, q) {
     if (cache.size > 300) cache.delete(cache.keys().next().value);
     send(res, 200, data);
   } catch (e) {
-    if (e.user) return send(res, 422, { error: e.message });
+    if (e.user) return send(res, e.status ? 502 : 422, { error: e.message });
     console.error('import failed', target.url, e.message);
     send(res, 502, { error: '曲のページを読み込めませんでした。相手のサイトが混んでいるか、つながりにくい状態です。少し待ってから、もう一度試してください。' });
   }

@@ -89,7 +89,7 @@ if (JSON.stringify(uf).includes('歌詞')) fail('U-FRET の歌詞が残ってい
 const cw = P.parseChordWiki('<h1 class="title">曲名</h1><h2 class="subtitle">歌手</h2><p class="comment">サビ</p><p class="line"><span class="chord">C</span><span class="word">歌詞</span><span class="chord">G</span></p><p class="line"></p><p class="line"><span class="chord">Am</span></p>');
 if (!(cw.title === '曲名' && cw.sections[0].label === 'サビ' && cw.sections.length === 2)) fail('ChordWiki の読み取り', JSON.stringify(cw));
 if (JSON.stringify(cw).includes('歌詞')) fail('ChordWiki の歌詞が残っている');
-['https://www.ufret.jp/song.php?data=41', 'https://ch.chordwiki.org/wiki.cgi?c=view&t=abc'].forEach(u => { try { P.checkUrl(u); } catch (e) { fail('URL を受け付けない', u); } });
+['https://www.ufret.jp/song.php?data=41', 'https://ch.chordwiki.org/wiki.cgi?c=view&t=abc', 'チェリー / スピッツ ギターコード - U-FRET https://www.ufret.jp/song.php?data=41', 'https://ch.chordwiki.org/wiki.cgi?c=view&t=%E3%83%81&key=2&symbol='].forEach(u => { try { P.checkUrl(u); } catch (e) { fail('URL を受け付けない', u); } });
 ['https://example.com/', 'file:///etc/passwd', 'https://www.ufret.jp/../song.php?data=1x', 'http://169.254.169.254/'].forEach(u => { try { P.checkUrl(u); fail('URL を通してしまう', u); } catch (e) { /* OK */ } });
 
 console.log(bad ? `NG ${bad} 件` : `OK(コード ${all.length} 個 × 12キー、進行 ${D.PROGS.length} 件、スケール ${D.SCALES.length} 件、分析のテスト)`);
