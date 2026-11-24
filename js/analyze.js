@@ -425,7 +425,7 @@ const Analyzer = (() => {
     res.mods.forEach(m => {
       const late = m.block >= res.blocks.length * 0.6;
       const up = m.semis >= 1 && m.semis <= 3;
-      H.push({ score: 10 + (late && up ? 3 : 0), go: m.go, text: `ブロック${m.block + 1}で Key ${m.from.name} から ${m.to.name} へ転調(${m.name})。` + (late && up ? '終盤でキーを上げて、盛り上がりを一段高めている。' : '景色をがらりと変えている。') });
+      H.push({ score: 10 + (late && up ? 3 : 0), go: m.go, refs: [{ b: m.block, at: 0, len: 1 }], text: `ブロック${m.block + 1}で Key ${m.from.name} から ${m.to.name} へ転調(${m.name})。` + (late && up ? '終盤でキーを上げて、盛り上がりを一段高めている。' : '景色をがらりと変えている。') });
     });
     const T = {
       tritone: l => `${labels(l)} の裏コードで、ベースを半音でなめらかに下ろしている。`,
@@ -448,14 +448,14 @@ const Analyzer = (() => {
     Object.entries(byKind).forEach(([k, list]) => {
       if (!T[k]) return;
       if (k === 'twofive' && list.length < 3) return;
-      H.push({ score: KIND[k].w + Math.min(list.length, 4) * 0.5, go: KIND[k].go, text: T[k](list) + `(${where(list)})` });
+      H.push({ score: KIND[k].w + Math.min(list.length, 4) * 0.5, go: KIND[k].go, refs: list.map(t => ({ b: t.block, at: t.at, len: t.len })), text: T[k](list) + `(${where(list)})` });
     });
     // 有名な進行
     const progs = {};
-    res.blocks.forEach((b, i) => b.progs.forEach(p => (progs[p.id] = progs[p.id] || { p, blocks: [] }).blocks.push(i)));
-    Object.values(progs).forEach(({ p, blocks }) => {
+    res.blocks.forEach((b, i) => b.progs.forEach(p => { const e = (progs[p.id] = progs[p.id] || { p, blocks: [], refs: [] }); e.blocks.push(i); e.refs.push({ b: i, at: p.from, len: p.to - p.from + 1 }); }));
+    Object.values(progs).forEach(({ p, blocks, refs }) => {
       const big = p.len >= 4;
-      H.push({ score: (big ? 3.5 : 2) + Math.min(blocks.length, 4) * 0.3, go: 'progression:' + p.id, text: `${p.name}(${p.mood})を ${where(blocks.map(b => ({ block: b })))} で使っている。` });
+      H.push({ score: (big ? 3.5 : 2) + Math.min(blocks.length, 4) * 0.3, go: 'progression:' + p.id, refs, text: `${p.name}(${p.mood})を ${where(blocks.map(b => ({ block: b })))} で使っている。` });
     });
     if (res.outRatio >= 0.25) H.push({ score: 4, text: `ダイアトニック以外のコードが ${Math.round(res.outRatio * 100)}% あり、色彩の多い進行になっている。` });
     if (!H.length || (res.outRatio < 0.05 && !res.mods.length)) H.push({ score: 1.5, text: 'ほぼダイアトニックコードだけで組み立てた、素直で覚えやすい進行。' });
