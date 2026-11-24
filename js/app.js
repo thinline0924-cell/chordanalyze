@@ -310,40 +310,16 @@ function anaResult(r) {
     const start = b.seq.map(x => b.items.indexOf(x));
     return (at, len) => [start[at], (start[at + len] != null ? start[at + len] : b.items.length) - 1];
   });
-  // 聴きどころの番号を、譜面のコードに付ける(E)
-  const hlAt = r.blocks.map(() => new Map());   // 項目の番号 → 付ける聴きどころの番号
-  const hlFirst = {};                            // 聴きどころの番号 → 譜面に場所があるか
-  r.highlights.forEach((x, k) => (x.refs || []).forEach(ref => {
-    const [a, z] = spans[ref.b](ref.at, ref.len);
-    for (let ii = a; ii <= z; ii++) { const m = hlAt[ref.b]; m.set(ii, (m.get(ii) || []).concat(ii === a ? [k + 1] : [])); }
-    if (!hlFirst[k + 1]) hlFirst[k + 1] = `hl-${ref.b}-${a}`;
-  }));
-  // 曲の地図(A)
-  const shade = {};
-  r.blocks.forEach(b => { const L = b.group[0]; if (shade[L] == null) shade[L] = Object.keys(shade).length % 4; });
-  const total = r.blocks.reduce((n, b) => n + b.items.length, 0) || 1;
-  h += `<section class="sec map-sec"><div class="eyebrow">Map</div><h2>曲の地図</h2>
-    <div class="map" role="list">${r.blocks.map((b, i) => {
-      const prev = r.blocks[i - 1], mod0 = r.mods.find(m => m.block === i);
-      const techN = b.tech.filter(t => !['perfect', 'twofive'].includes(t.kind)).length;
-      const hls = [...new Set([...hlAt[i].values()].flat())];
-      return `${i === 0 ? `<span class="map-key">Key ${esc(b.key.name)}</span>` : ''}${mod0 ? `<span class="map-key is-mod">→ ${esc(b.key.name)}<small>${esc(mod0.name)}</small></span>` : ''}
-        <button class="map-b g${shade[b.group[0]]}${b.variant ? ' is-var' : ''}" role="listitem" data-jump="a-b${i}" style="flex-grow:${Math.max(1, b.items.length)}" title="${esc(r.flow.blocks[i].label)}:${esc(r.flow.blocks[i].text)}">
-          <span class="map-g">${esc(b.group)}</span><span class="map-n">${i + 1}</span>
-          <span class="map-t">${'<i></i>'.repeat(Math.min(techN, 4))}${hls.slice(0, 3).map(n => `<b>${n}</b>`).join('')}</span></button>`;
-    }).join('')}</div>
-    <p class="note-s map-legend">記号(A・B…)が同じブロックは、同じ進行。濃さも同じです。■ は見つかった技法の数、数字は聴きどころの番号。押すと譜面へ移ります。</p></section>`;
   // 流れ
   h += `<section class="sec"><div class="eyebrow">Flow</div><h2>流れ</h2>
     <div class="flow-sum">${r.flow.summary.map(l => `<p>${esc(l)}</p>`).join('')}</div>
     <ol class="flow">${r.flow.blocks.map((b, i) => `<li><span class="no">${pad(i + 1)}</span><button class="flow-l" data-jump="a-b${i}">${esc(b.label)}</button><span class="grp">${esc(b.group)}</span><p>${esc(b.text)}</p></li>`).join('')}</ol></section>`;
-  // 聴きどころ(番号を押すと譜面のその場所へ)
+  // 聴きどころ
   h += `<section class="sec"><div class="eyebrow">Highlights</div><h2>聴きどころ</h2>
-    <ol class="hl">${r.highlights.map((x, i) => `<li>${hlFirst[i + 1] ? `<button class="hn hn-l" data-hl="${i + 1}" aria-label="聴きどころ${i + 1}を譜面で見る">${i + 1}</button>` : `<span class="hn hn-l is-none">${i + 1}</span>`}<p>${esc(x.text)}</p>
-      <span class="hl-a">${hlFirst[i + 1] ? `<button class="lnk" data-hl="${i + 1}">譜面で見る</button>` : ''}${x.go ? `<a href="#${x.go.split(':')[0]}" data-go="${x.go}">理論を見る</a>` : ''}</span></li>`).join('')}</ol></section>`;
+    <ol class="hl">${r.highlights.map((x, i) => `<li><span class="no">${pad(i + 1)}</span><p>${esc(x.text)}</p>${x.go ? `<a href="#${x.go.split(':')[0]}" data-go="${x.go}">理論を見る</a>` : '<span></span>'}</li>`).join('')}</ol></section>`;
   // 譜面
   h += `<section class="sec"><div class="eyebrow">Sheet</div><h2>譜面</h2>
-    <p class="note-s legend2"><span class="mk-br">線</span>知られている進行 <span class="hn">1</span>聴きどころの番号 <span class="mk-a">下線</span>技法が見つかったコード <span class="mk-o">点線</span>ダイアトニック以外</p>`;
+    <p class="note-s legend2"><span class="mk-br">線</span>知られている進行 <span class="mk-a">下線</span>技法が見つかったコード <span class="mk-o">点線</span>ダイアトニック以外</p>`;
   r.blocks.forEach((b, bi) => {
     const kp = anaKp(b), pid = 'a:' + bi, span = spans[bi];
     const marks = new Map();
@@ -353,7 +329,7 @@ function anaResult(r) {
     const brOf = ii => brs.find(x => ii >= x.a && ii <= x.z);
     const lines = [];
     b.items.forEach((x, ii) => { (lines[x.li] = lines[x.li] || []).push([x, ii]); });
-    h += `<div class="ablk g${shade[b.group[0]]}" id="a-b${bi}"><div class="ablk-h"><span class="no">${pad(bi + 1)}</span><b>${esc(r.flow.blocks[bi].label)}</b><span class="grp">${esc(b.group)}</span>
+    h += `<div class="ablk" id="a-b${bi}"><div class="ablk-h"><span class="no">${pad(bi + 1)}</span><b>${esc(r.flow.blocks[bi].label)}</b><span class="grp">${esc(b.group)}</span>
       <span class="note-s">Key ${esc(anaKeyName(b, kp))}</span>
       ${playBtn(pid)}</div>
       ${lines.filter(Boolean).map(line => `<div class="aline${line.some(([, ii]) => brOf(ii)) ? ' has-br' : ''}">${line.map(([x, ii], k) => {
@@ -361,12 +337,10 @@ function anaResult(r) {
         // くくりの両端の印は、進行の本当の始まりと終わりだけ(行をまたぐときは途中を開いたままにする)
         const brc = br ? ` br${ii === br.a ? ' br-s' : ''}${ii === br.z ? ' br-e' : ''}` : '';
         const brl = br && ii === br.a ? `<a class="br-l" href="#progression" data-go="progression:${br.p.id}">${esc(br.p.name)}</a>` : '';
-        const hn = hlAt[bi].get(ii) || [];
-        const badge = hn.length ? `<span class="hn">${hn.join(' ')}</span>` : '';
         if (x.bad) return `<div class="cell${brc}">${brl}<span class="ch bad" data-pid="${pid}" data-ci="${ii}"><span class="d">?</span><span class="n">${esc(x.sym)}</span></span></div>`;
         const name = S.av === 'sel' ? chordOf(x.tok, kp, b.key.mode).name : Analyzer.pretty(x.sym);
         const mk = marks.get(x);
-        return `<div class="cell${brc}">${brl}${badge}<button class="ch${mk ? ' is-mark' : !x.dia ? ' is-out' : ''}" data-tok="${esc(x.tok)}" data-mode="${b.key.mode}" data-kp="${kp}" data-pid="${pid}" data-ci="${ii}" title="${esc(mk ? mk.join('・') : name)}"><span class="d">${esc(x.deg)}</span><span class="n">${esc(name)}</span></button></div>`;
+        return `<div class="cell${brc}">${brl}<button class="ch${mk ? ' is-mark' : !x.dia ? ' is-out' : ''}" data-tok="${esc(x.tok)}" data-mode="${b.key.mode}" data-kp="${kp}" data-pid="${pid}" data-ci="${ii}" title="${esc(mk ? mk.join('・') : name)}"><span class="d">${esc(x.deg)}</span><span class="n">${esc(name)}</span></button></div>`;
       }).join('')}</div>`).join('')}</div>`;
   });
   h += `</section>`;
@@ -576,14 +550,6 @@ document.addEventListener('click', e => {
     return;
   }
   if (d.dr) { S.drOpen = S.drOpen === d.dr ? null : d.dr; renderNav(); return; }
-  if (d.hl) {
-    const cells = [...document.querySelectorAll('.cell .hn')].filter(x => x.textContent.split(' ').includes(d.hl)).map(x => x.closest('.cell'));
-    if (cells.length) {
-      cells[0].scrollIntoView({ block: 'center' });
-      cells.forEach(c => { c.classList.add('is-flash'); setTimeout(() => c.classList.remove('is-flash'), 1700); });
-    }
-    return;
-  }
   if (d.jump) { const el = document.getElementById(d.jump); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('is-flash'); setTimeout(() => el.classList.remove('is-flash'), 1700); } return; }
   if (d.go) { e.preventDefault(); const [pg, id] = d.go.split(':'); go(pg, id); return; }
   if (d.res != null) { const r = lastResults[+d.res]; if (r) go(...r.go); return; }
