@@ -46,7 +46,36 @@ const Organ = {
       });
     });
   },
-  ready() { if (!this.init()) return false; this.ctx.resume(); return true; },
+  // iPhone は、本体横の消音スイッチがオンだと、Web Audio(ブラウザで作った音)が鳴らない。
+  // 最初のタップで「音楽の再生」として扱うよう伝える:
+  //   1. 新しい Safari(iOS 17 以降)は navigator.audioSession で直接伝えられる
+  //   2. それより古い Safari 向けに、無音の <audio> を一度だけ再生する(音楽アプリと同じ扱いになる)
+  unlocked: false,
+  unlockIOS() {
+    if (this.unlocked) return;
+    this.unlocked = true;
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* 使えない環境では何もしない */ }
+    try {
+      // 0.05 秒の無音の WAV をその場で作る(音源ファイルは使わない)
+      const n = 400, buf = new Uint8Array(44 + n), v = new DataView(buf.buffer);
+      const str = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+      str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt ');
+      v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+      str(36, 'data'); v.setUint32(40, n, true); buf.fill(128, 44);
+      let bin = ''; buf.forEach(b => (bin += String.fromCharCode(b)));
+      const el = new Audio('data:audio/wav;base64,' + btoa(bin));
+      el.setAttribute('playsinline', '');
+      const p = el.play();
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) { /* 鳴らせなくても続ける */ }
+  },
+  ready() {
+    this.unlockIOS();
+    if (!this.init()) return false;
+    if (this.ctx.state !== 'running') this.ctx.resume();
+    return true;
+  },
 
   // コードの音の並べ方:ベース(G2〜F♯3)の上に、構成音をすべて B3〜A♯4 の1オクターブに収めて重ねる(転回形)。
   // キーによって音域が上下しないので、どのコードも同じくらいの大きさに聞こえる
