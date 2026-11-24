@@ -465,7 +465,7 @@ function play(id) {
     const b = S.ana && S.ana.blocks[+key];
     if (!b) return;
     const kp = anaKp(b);
-    steps = b.items.map(x => ({ midis: x.bad ? [] : Organ.voicing(chordOf(x.tok, kp, b.key.mode)), dur: 0.8 }));
+    steps = b.items.map(x => ({ midis: x.bad ? [] : Organ.voicing(chordOf(x.tok, kp, b.key.mode)), dur: 0.8, bass: true }));
     Organ.sequence(id, steps, i => highlight(id, 'data-ci', i));
     if (Organ.playingId === id) setPlayBtn(id, true);
     return;
@@ -475,7 +475,7 @@ function play(id) {
     steps = [];
     p.bars.split('|').forEach(b => {
       const toks = b.trim().split(/\s+/);
-      toks.forEach(t => steps.push({ midis: Organ.voicing(chordOf(t, S.key, p.mode)), dur: BAR / toks.length }));
+      toks.forEach(t => steps.push({ midis: Organ.voicing(chordOf(t, S.key, p.mode)), dur: BAR / toks.length, bass: true }));
     });
     attr = 'data-ci';
   } else {

@@ -28,9 +28,15 @@ const Organ = {
   },
   // 鳴らす音:倍音の重ね方(ドローバーオルガンの考え方)
   PARTIALS: [[1, 1], [2, 0.5], [3, 0.26], [4, 0.14], [6, 0.06], [8, 0.03]],
-  note(midis, t, dur, dest) {
-    const ac = this.ctx, amp = 0.15 / Math.sqrt(midis.length);
-    midis.forEach(m => {
+  // ベース用の倍音:低い音でも小さなスピーカーで高さが聞き取れるよう、2〜6倍の音を多めに重ねる
+  BASS_PARTIALS: [[1, 1], [2, 0.9], [3, 0.7], [4, 0.5], [5, 0.32], [6, 0.22], [8, 0.1]],
+  // withBass:midis の先頭をベースとして、上の和音とは別の音色・音量で鳴らす(分数コードのベースが聞こえるように)
+  note(midis, t, dur, dest, withBass) {
+    const ac = this.ctx;
+    const ups = withBass ? midis.slice(1) : midis;
+    const voices = ups.map(m => [m, 0.15 / Math.sqrt(Math.max(1, ups.length)), this.PARTIALS]);
+    if (withBass && midis.length) voices.unshift([midis[0], 0.075, this.BASS_PARTIALS]);
+    voices.forEach(([m, amp, partials]) => {
       const f = 440 * Math.pow(2, (m - 69) / 12);
       const g = ac.createGain();
       g.gain.setValueAtTime(0, t);
@@ -38,7 +44,7 @@ const Organ = {
       g.gain.setValueAtTime(amp, t + Math.max(0.03, dur - 0.05));
       g.gain.linearRampToValueAtTime(0, t + dur + 0.08);
       g.connect(dest);
-      this.PARTIALS.forEach(([h, a]) => {
+      partials.forEach(([h, a]) => {
         if (f * h > 7000) return;
         const o = ac.createOscillator(); o.frequency.value = f * h;
         const og = ac.createGain(); og.gain.value = a;
@@ -77,19 +83,19 @@ const Organ = {
     return true;
   },
 
-  // コードの音の並べ方:ベース(G2〜F♯3)の上に、構成音をすべて B3〜A♯4 の1オクターブに収めて重ねる(転回形)。
+  // コードの音の並べ方:ベース(B2〜A♯3)の上に、構成音をすべて B3〜A♯4 の1オクターブに収めて重ねる(転回形)。
   // キーによって音域が上下しないので、どのコードも同じくらいの大きさに聞こえる
   // (低い音域で鳴らすと、スマホやノートPCのスピーカーでは小さく聞こえるため)
   voicing(c) {
     const LO = 59;
     const ups = [...new Set(c.tones.map(t => t.pc))].map(pc => LO + mod(pc - LO, 12)).sort((a, b) => a - b);
-    const bass = 43 + mod((c.bass ? c.bass.pc : c.root.pc) - 7, 12);
+    const bass = 47 + mod((c.bass ? c.bass.pc : c.root.pc) - 11, 12);
     return [bass, ...ups];
   },
   chord(c) {
     if (!this.ready()) return;
     this.stop();
-    this.note(this.voicing(c), this.ctx.currentTime + 0.02, 1.2, this.newSession());
+    this.note(this.voicing(c), this.ctx.currentTime + 0.02, 1.2, this.newSession(), true);
   },
   // steps: [{midis, dur}]。onStep(i) は鳴らす瞬間に呼ばれる
   sequence(id, steps, onStep) {
@@ -100,7 +106,7 @@ const Organ = {
     let at = 0;
     this.playingId = id;
     steps.forEach((st, i) => {
-      this.note(st.midis, t0 + at, st.dur - 0.04, dest);
+      this.note(st.midis, t0 + at, st.dur - 0.04, dest, st.bass);
       const when = at;
       this.timers.push(setTimeout(() => onStep && onStep(i), (when + 0.05) * 1000));
       at += st.dur;
