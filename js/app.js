@@ -152,7 +152,7 @@ const HOME = [
   { id: 'analyze', desc: 'U-FRET の URL や ChordWiki から、曲の進行を分析', links: () => [['analyze:', 'URL を貼って分析']] },
 ];
 function pageTop() {
-  return `<div class="home-hd"><div class="eyebrow">Contents</div><h1>作曲の早見帳</h1></div>
+  return `<div class="home-hd"><h1 class="eyebrow">Contents</h1></div>
     <ol class="home">${HOME.map((h, i) => {
       const pg = PAGES.find(p => p.id === h.id);
       return `<li class="home-row"><span class="no">${pad(i + 1)}</span>

@@ -412,7 +412,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .gn-drop .grp-h:first-child { padding-top: 0; }
 
 /* ---------- ホーム ---------- */
-.home-hd { padding-block: 44px 22px; }
+.home-hd { padding-block: 44px 14px; }
+.home-hd h1.eyebrow { margin: 0; font-weight: 400; }
 .home-hd h1 { font-weight: 300; font-size: clamp(30px, 4.2vw, 50px); letter-spacing: .16em; line-height: 1.25; margin: 14px 0 0; }
 .home { list-style: none; margin: 0 0 80px; padding: 0; border-top: 1px solid var(--ink); }
 .home-row { display: grid; grid-template-columns: 34px minmax(180px, 250px) minmax(0, 1fr) 40px; grid-template-areas: "no t d arw" "no t l arw";
@@ -432,7 +433,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .home-arw::after { content: ""; width: 8px; height: 8px; border-top: 1px solid currentColor; border-right: 1px solid currentColor; transform: translateX(-2px) rotate(45deg); }
 .home-arw:hover { background: var(--ink); color: var(--paper); }
 @media (max-width: 820px) {
-  .home-hd { padding-block: 28px 16px; }
+  .home-hd { padding-block: 28px 12px; }
   .home-row { grid-template-columns: 26px minmax(0, 1fr) 38px; grid-template-areas: "no t arw" "no d d" "no l l"; gap: 6px 10px; padding: 16px 0; }
   .home-t .ja { font-size: 21px; }
   .home-d { margin: 0; font-size: 13px; }
