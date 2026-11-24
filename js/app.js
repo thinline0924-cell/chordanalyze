@@ -11,7 +11,6 @@ const store = {
 };
 const S = {
   key: store.get('key', 0),                 // 主音(0=C … 11=B)
-  saved: new Set(store.get('saved', [])),   // 保存した進行
   label: store.get('label', 'deg'),         // 図の文字:deg 度数 / note 音名
   tab: store.get('tab', 'pop'),             // 進行のタブ
   dmode: store.get('dmode', 'major'),       // ダイアトニックの種類
@@ -23,7 +22,6 @@ const S = {
   // 分析
   song: store.get('last', null),            // いま分析している曲(コードだけ。歌詞は持たない)
   ana: null,                                // 分析の結果
-  songs: store.get('songs', []),            // 保存した曲
   av: 'orig',                               // 譜面の表示:orig 原曲キー / sel 選んだキー
   impUrl: '', pasteText: '', anaPaste: false, anaBusy: false, anaErr: '', bmNote: '',
 };
@@ -57,7 +55,11 @@ const keyMeta = mode => `Key<b>${keyLabel(mode || 'major')}</b>`;
 /* ---------- ヘッダー ---------- */
 function renderNav() {
   const cur = pageOf();
-  $('#gnav').innerHTML = PAGES.slice(1).map(p => `<a href="#${p.id}"${cur === p.id ? ' aria-current="page"' : ''}>${p.en}${p.n ? `<sup>${p.n}</sup>` : ''}</a>`).join('');
+  // ナビ:マウスを乗せる(キーボードなら Tab で入る)と、そのページの項目の一覧(索引)が下に開く
+  $('#gnav').innerHTML = PAGES.slice(1).map((p, i, arr) => {
+    const col = INDEX.find(c => c.page === p.id);
+    return `<div class="gn-item${col ? ' has-drop' : ''}${i >= arr.length - 3 ? ' is-right' : ''}"><a href="#${p.id}"${cur === p.id ? ' aria-current="page"' : ''}>${p.en}${p.n ? `<sup>${p.n}</sup>` : ''}</a>${col ? `<div class="gn-drop${col.groups || col.cols2 ? ' wide' : ''}"><div class="gn-drop-h"><span class="ja">${p.ja}</span><a href="#${p.id}">ページを開く</a></div>${indexBody(col)}</div>` : ''}</div>`;
+  }).join('');
   // ドロワー(スマホのメニュー):ページごとに、中の項目を開いて見られる
   $('#drNav').innerHTML = PAGES.map(p => {
     const col = INDEX.find(c => c.page === p.id), open = S.drOpen === p.id;
@@ -75,14 +77,6 @@ function indexBody(col) {
       ? `<div class="cols2">${col.items.map(it => `<ul>${link(col.page, it)}</ul>`).join('')}</div>`
       : `<ul>${col.items.map(it => link(col.page, it)).join('')}</ul>`;
 }
-// 索引(メガメニュー)
-function indexHTML() {
-  return `<div class="idx">${INDEX.map(col => {
-    const pg = PAGES.find(p => p.id === col.page);
-    return `<section class="idx-col"><a class="idx-h" href="#${col.page}"><span class="en">${pg.en}<sup>${pg.n}</sup></span><span class="ja">${pg.ja}</span></a>${indexBody(col)}</section>`;
-  }).join('')}</div>`;
-}
-
 /* ---------- 共通の部品 ---------- */
 function chordBtn(t, mode, top, extra = '') {
   const c = chordOf(t, S.key, mode);
@@ -110,13 +104,13 @@ function pager(cur) {
 
 /* ---------- 進行の行 ---------- */
 function progRow(p, i) {
-  const el = 'p-' + p.id, open = S.open.has(el), saved = S.saved.has(p.id);
+  const el = 'p-' + p.id, open = S.open.has(el);
   return `<article class="row${open ? ' is-open' : ''}" id="${el}">
   <div class="no">${pad(i + 1)}</div>
   <div class="nm"><button class="nm-btn" data-toggle="${el}" aria-expanded="${open}"><span class="t">${p.name}</span><span class="pm" aria-hidden="true"></span></button>
     <div class="k"><span class="en">Key ${keyLabel(p.mode)}</span> ・ ${p.mood}</div></div>
   <div class="cw">${chartHTML(p.bars, p.mode, 'p:' + p.id)}</div>
-  <div class="act">${playBtn('p:' + p.id)}<button class="sbtn" data-save="${p.id}" aria-pressed="${saved}">${saved ? '保存済み' : '保存'}</button></div>
+  <div class="act">${playBtn('p:' + p.id)}</div>
   ${open ? `<dl class="det"><dt>使い所</dt><dd>${p.use}</dd><dt>解説</dt><dd>${p.note}</dd>${p.vars.map(([lab, b]) => `<dt>変形</dt><dd><p>${lab}</p>${chartHTML(b, p.mode)}</dd>`).join('')}
     ${(p.songs || []).length ? `<dt>名前の由来</dt><dd>${p.songs.map(([t, a]) => `<p class="song"><span>${esc(t)} / ${esc(a)}</span>${extLinks(t + ' ' + a, t + ' ' + a)}</p>`).join('')}</dd>` : ''}
     <dt>曲を探す</dt><dd><p class="song">${extLinks(searchWord(p) + (p.cat === 'jazz' ? ' ジャズ' : ' 使われている曲'), searchWord(p))}<span class="note-s">この進行が使われている曲を、外部サイトで検索します</span></p></dd></dl>` : ''}
@@ -148,18 +142,26 @@ function scaleRow(sc, i) {
 }
 
 /* ---------- ページ ---------- */
+// ホーム:6つのページへの入口。ページの説明と、よく使う項目へのリンクを並べる
+const HOME = [
+  { id: 'progression', desc: 'J-POP・Jazz・終止・転調の進行を、度数と実際のコードで', links: () => CATS.map(([c, l]) => ['progression:@' + c, l, PROGS.filter(p => p.cat === c).length]) },
+  { id: 'diatonic', desc: 'メジャーと3種類のマイナーの和音と機能', links: () => DIATONIC.map(d => ['diatonic:' + d.id, d.name]) },
+  { id: 'chord', desc: 'セカンダリードミナントや裏コードなどの効かせ方', links: () => USES.slice(0, 5).map(u => ['chord:' + u.id, u.name]) },
+  { id: 'tension', desc: 'コードごとに使えるテンションと、避ける音', links: () => [['tension:dom', '7(ドミナント)'], ['tension:M7', 'M7'], ['tension:m7', 'm7'], ['tension:guide', 'ドミナントの選び方']] },
+  { id: 'scale', desc: 'モード・ペンタ・オルタードなどと、コードとの対応', links: () => [['scale:dorian', 'ドリアン'], ['scale:mixo', 'ミクソリディアン'], ['scale:minpenta', 'マイナーペンタ'], ['scale:altered', 'オルタード'], ['scale:map', '対応表']] },
+  { id: 'analyze', desc: 'U-FRET の URL や ChordWiki から、曲の進行を分析', links: () => [['analyze:', 'URL を貼って分析']] },
+];
 function pageTop() {
-  const saved = PROGS.filter(p => S.saved.has(p.id));
-  return head('Home', 'ホーム', keyMeta()) +
-    `<section class="sec first"><div class="eyebrow">Saved</div><h2>保存した進行</h2>
-     <div class="rows">${saved.length ? saved.map(progRow).join('') : '<p class="empty">進行の「保存」を押すと、ここに並びます。項目は上の「索引」から開けます。</p>'}</div></section>
-     <section class="sec"><div class="eyebrow">Songs</div><h2>保存した曲</h2>
-     <div class="rows">${S.songs.length ? songRows() : '<p class="empty">「分析」で読み込んだ曲の「保存」を押すと、ここに並びます。</p>'}</div></section>` + pager('top');
+  return `<div class="home-hd"><div class="eyebrow">Contents</div><h1>作曲の早見帳</h1></div>
+    <ol class="home">${HOME.map((h, i) => {
+      const pg = PAGES.find(p => p.id === h.id);
+      return `<li class="home-row"><span class="no">${pad(i + 1)}</span>
+        <a class="home-t" href="#${h.id}"><span class="en">${pg.en}${pg.n ? `<sup>${pg.n}</sup>` : ''}</span><span class="ja">${pg.ja}</span></a>
+        <p class="home-d">${h.desc}</p>
+        <div class="home-l">${h.links().map(([go, name, n]) => `<a href="#${go.split(':')[0]}" data-go="${go}">${name}${n != null ? `<sup>${n}</sup>` : ''}</a>`).join('')}</div>
+        <a class="home-arw" href="#${h.id}" aria-label="${pg.ja}を開く"></a></li>`;
+    }).join('')}</ol>`;
 }
-const songRows = () => S.songs.map((sg, i) => `
-      <div class="srow"><span class="no">${pad(i + 1)}</span>
-       <button class="srow-t" data-song-open="${esc(sg.id)}"><b>${esc(sg.title)}</b><span class="note-s">${esc(sg.artist)}${sg.artist ? ' ・ ' : ''}${SRC[sg.source] || ''}</span></button>
-       <button class="sbtn" data-song-del="${esc(sg.id)}">削除</button></div>`).join('');
 function pageProg() {
   let n = 0;
   const groups = SUBS[S.tab].map(([sid, name]) => ({ sid, name, list: PROGS.filter(p => p.cat === S.tab && p.sub === sid) })).filter(g => g.list.length);
@@ -274,15 +276,6 @@ function analyzePasted() {
   if (!song.sections.length) { S.anaErr = 'コードが見つかりませんでした。「C G Am F」や「[C]歌詞」の形で貼り付けてください。'; render(); return; }
   setSong(song); S.scrollTo = 'a-res'; render();
 }
-const songId = sg => sg.url || 'paste:' + sg.sections.map(s => s.lines.map(l => l.join(' ')).join('/')).join('|').slice(0, 200);
-function toggleSaveSong() {
-  if (!S.song) return;
-  const id = songId(S.song);
-  if (S.songs.some(x => x.id === id)) S.songs = S.songs.filter(x => x.id !== id);
-  else S.songs = [{ id, title: S.song.title || '貼り付けたコード', artist: S.song.artist || '', source: S.song.source, url: S.song.url || '', keyHint: S.song.keyHint || '', sections: S.song.sections, at: Date.now() }, ...S.songs].slice(0, 40);
-  store.set('songs', S.songs);
-  render();
-}
 const SRC = { ufret: 'U-FRET', chordwiki: 'ChordWiki', paste: '貼り付け' };
 function pageAnalyze() {
   if (S.song && !S.ana && !S.anaErr) { try { S.ana = Analyzer.analyzeSong(S.song); } catch (e) { S.ana = null; } }
@@ -303,19 +296,15 @@ function pageAnalyze() {
     ${S.anaPaste ? `<div class="paste"><textarea id="impText" rows="7" placeholder="例&#10;[Aメロ]&#10;C G Am F&#10;FM7 G7 Em7 Am">${esc(S.pasteText)}</textarea><button type="button" class="sbtn" data-paste-go>貼り付けたコードを分析する</button></div>` : ''}
   </form>`;
   if (r) h += anaResult(r);
-  if (S.songs.length) {
-    h += `<section class="sec"><div class="eyebrow">Saved</div><h2>保存した曲</h2><div class="rows">${songRows()}</div></section>`;
-  }
   return h + pager('analyze');
 }
 function anaResult(r) {
-  const sg = S.song, saved = S.songs.some(x => x.id === songId(sg));
+  const sg = S.song;
   const selName = tonicName(mod(r.key.pc + anaShift(), 12), r.key.mode) + (r.key.mode === 'minor' ? 'm' : '');
   let h = `<section class="song-hd" id="a-res">
     <div class="song-t"><div class="eyebrow">Song</div><h2>${esc(sg.title || '貼り付けたコード')}</h2>
       <p class="note-s">${esc(sg.artist)}${sg.artist ? ' ・ ' : ''}${SRC[sg.source] || ''}${sg.url ? ` ・ <a href="${esc(sg.url)}" target="_blank" rel="noopener">元のページ</a>` : ''}</p></div>
-    <div class="song-act"><div class="seg" role="group" aria-label="譜面のキー"><button aria-pressed="${S.av === 'orig'}" data-av="orig">原曲キー ${esc(r.key.name)}</button><button aria-pressed="${S.av === 'sel'}" data-av="sel">選んだキー ${esc(selName)}</button></div>
-      <button class="sbtn" data-song-save aria-pressed="${saved}">${saved ? '保存済み' : '保存'}</button></div></section>`;
+    <div class="song-act"><div class="seg" role="group" aria-label="譜面のキー"><button aria-pressed="${S.av === 'orig'}" data-av="orig">原曲キー ${esc(r.key.name)}</button><button aria-pressed="${S.av === 'sel'}" data-av="sel">選んだキー ${esc(selName)}</button></div></div></section>`;
   // 流れ
   h += `<section class="sec"><div class="eyebrow">Flow</div><h2>流れ</h2>
     <div class="flow-sum">${r.flow.summary.map(l => `<p>${esc(l)}</p>`).join('')}</div>
@@ -504,7 +493,8 @@ function go(page, id) {
   if (page === 'diatonic') { S.dmode = id; store.set('dmode', id); }
   else if (page === 'progression' && id && id[0] === '@') {
     const [cat, sid] = id.slice(1).split('.');
-    S.tab = cat; store.set('tab', cat); S.scrollTo = `g-${cat}-${sid}`;
+    S.tab = cat; store.set('tab', cat);
+    if (sid) S.scrollTo = `g-${cat}-${sid}`;
   }
   else if (id && PREFIX[page]) {
     const el = PREFIX[page] + id;
@@ -513,10 +503,9 @@ function go(page, id) {
     if (page === 'scale' && id !== 'map') S.open.add(el);
   }
   if (pageOf() !== page) location.hash = page;
-  else { render(); if (!id) window.scrollTo(0, 0); }
+  else { render(); if (!S.scrollTo) window.scrollTo(0, 0); }
 }
 function closeOverlays() {
-  $('#mega').hidden = true; $('#idxBtn').setAttribute('aria-expanded', 'false');
   $('#drawer').hidden = true; $('#menuBtn').setAttribute('aria-expanded', 'false');
   clearSearch();
 }
@@ -529,17 +518,10 @@ document.addEventListener('click', e => {
   if (d.key != null) {
     S.key = +d.key; store.set('key', S.key); Organ.stop();
     renderKeys(); render(); renderPanel();
-    if (!$('#mega').hidden) $('#megaIn').innerHTML = indexHTML();
     return;
   }
   if (d.tok) { const kp = d.kp != null ? +d.kp : null; Organ.chord(chordOf(d.tok, kp != null ? kp : S.key, d.mode)); openPanel(d.tok, d.mode, kp); return; }
   if (d.play) { play(d.play); return; }
-  if (d.save) {
-    S.saved.has(d.save) ? S.saved.delete(d.save) : S.saved.add(d.save);
-    store.set('saved', [...S.saved]);
-    if (pageOf() === 'top') render(); else rerenderRow('p-' + d.save);
-    return;
-  }
   if (d.toggle) { S.open.has(d.toggle) ? S.open.delete(d.toggle) : S.open.add(d.toggle); rerenderRow(d.toggle); return; }
   if (d.tab) { S.tab = d.tab; store.set('tab', S.tab); Organ.stop(); render(); return; }
   if (d.dsize) { S.dsize = +d.dsize; store.set('dsize', S.dsize); render(); return; }
@@ -558,23 +540,10 @@ document.addEventListener('click', e => {
     else { S.bmNote = 'このブラウザではコピーできません。PC でブックマークバーへドラッグして登録してください。'; render(); }
     return;
   }
-  if (d.songSave != null) { toggleSaveSong(); return; }
-  if (d.songOpen) {
-    const sg = S.songs.find(x => x.id === d.songOpen);
-    if (sg) { S.anaErr = ''; setSong(sg); S.scrollTo = 'a-res'; if (pageOf() !== 'analyze') location.hash = 'analyze'; else render(); }
-    return;
-  }
   if (d.dr) { S.drOpen = S.drOpen === d.dr ? null : d.dr; renderNav(); return; }
-  if (d.songDel) { S.songs = S.songs.filter(x => x.id !== d.songDel); store.set('songs', S.songs); render(); return; }
   if (d.jump) { const el = document.getElementById(d.jump); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('is-flash'); setTimeout(() => el.classList.remove('is-flash'), 1700); } return; }
   if (d.go) { e.preventDefault(); const [pg, id] = d.go.split(':'); go(pg, id); return; }
   if (d.res != null) { const r = lastResults[+d.res]; if (r) go(...r.go); return; }
-  if (t.id === 'idxBtn') {
-    const open = $('#mega').hidden;
-    if (open) $('#megaIn').innerHTML = indexHTML();
-    $('#mega').hidden = !open; t.setAttribute('aria-expanded', String(open));
-    return;
-  }
   if (t.id === 'menuBtn') { $('#drawer').hidden = false; t.setAttribute('aria-expanded', 'true'); $('#q2').focus({ preventScroll: true }); return; }
   if (d.drawerClose != null) { closeOverlays(); return; }
   if (t.tagName === 'A' && (t.getAttribute('href') || '').startsWith('#')) closeOverlays();
