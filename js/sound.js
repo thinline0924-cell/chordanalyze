@@ -26,6 +26,8 @@ const Organ = {
     this.session = ac.createGain(); this.session.connect(this.master);
     return this.session;
   },
+  // 鳴らす音:倍音の重ね方(ドローバーオルガンの考え方)
+  PARTIALS: [[1, 1], [2, 0.5], [3, 0.26], [4, 0.14], [6, 0.06], [8, 0.03]],
   note(midis, t, dur, dest) {
     const ac = this.ctx, amp = 0.15 / Math.sqrt(midis.length);
     midis.forEach(m => {
@@ -36,7 +38,7 @@ const Organ = {
       g.gain.setValueAtTime(amp, t + Math.max(0.03, dur - 0.05));
       g.gain.linearRampToValueAtTime(0, t + dur + 0.08);
       g.connect(dest);
-      [[1, 1], [2, 0.5], [3, 0.26], [4, 0.14], [6, 0.06], [8, 0.03]].forEach(([h, a]) => {
+      this.PARTIALS.forEach(([h, a]) => {
         if (f * h > 7000) return;
         const o = ac.createOscillator(); o.frequency.value = f * h;
         const og = ac.createGain(); og.gain.value = a;
@@ -46,11 +48,14 @@ const Organ = {
   },
   ready() { if (!this.init()) return false; this.ctx.resume(); return true; },
 
-  // コードの音の並べ方:ベース(E2〜D♯3)+ルートから上に構成音
+  // コードの音の並べ方:ベース(G2〜F♯3)の上に、構成音をすべて B3〜A♯4 の1オクターブに収めて重ねる(転回形)。
+  // キーによって音域が上下しないので、どのコードも同じくらいの大きさに聞こえる
+  // (低い音域で鳴らすと、スマホやノートPCのスピーカーでは小さく聞こえるため)
   voicing(c) {
-    const bass = 40 + mod((c.bass ? c.bass.pc : c.root.pc) - 4, 12);
-    const base = 52 + mod(c.root.pc - 4, 12);
-    return [bass, ...c.tones.map(t => base + t.semi)];
+    const LO = 59;
+    const ups = [...new Set(c.tones.map(t => t.pc))].map(pc => LO + mod(pc - LO, 12)).sort((a, b) => a - b);
+    const bass = 43 + mod((c.bass ? c.bass.pc : c.root.pc) - 7, 12);
+    return [bass, ...ups];
   },
   chord(c) {
     if (!this.ready()) return;

@@ -17,6 +17,7 @@ const S = {
   dmode: store.get('dmode', 'major'),       // ダイアトニックの種類
   dsize: store.get('dsize', 4),             // 3和音 / 4和音
   open: new Set(),                          // 開いている行
+  drOpen: null,                             // ドロワーで開いているページ
   panel: null,                              // 詳細パネルのコード
   scrollTo: null,                           // 描いたあとに移動する場所
   // 分析
@@ -31,7 +32,7 @@ if (!(S.key >= 0 && S.key < 12)) S.key = 0;
 if (!CATS.some(c => c[0] === S.tab)) S.tab = 'pop';
 
 const PAGES = [
-  { id: 'top', en: 'Index', ja: '索引' },
+  { id: 'top', en: 'Home', ja: 'ホーム' },
   { id: 'diatonic', en: 'Diatonic', ja: 'ダイアトニック', n: DIATONIC.length },
   { id: 'progression', en: 'Progression', ja: '進行', n: PROGS.length },
   { id: 'chord', en: 'Chord', ja: 'コードの使い所', n: USES.length },
@@ -42,7 +43,7 @@ const PAGES = [
 const PREFIX = { progression: 'p-', chord: 'u-', tension: 't-', scale: 's-' };
 const INDEX = [
   { page: 'diatonic', items: DIATONIC.map(d => [d.id, d.name]) },
-  { page: 'progression', groups: CATS.map(([c, lab]) => [lab, PROGS.filter(p => p.cat === c).map(p => [p.id, p.name])]) },
+  { page: 'progression', groups: CATS.map(([c, lab]) => [lab, SUBS[c].map(([sid, name]) => ['@' + c + '.' + sid, name, PROGS.filter(p => p.cat === c && p.sub === sid).length])]) },
   { page: 'chord', items: USES.map(u => [u.id, u.name]) },
   { page: 'tension', items: [...TENSION_ITEMS.map(t => [t.id, t.name]), ['guide', 'ドミナントのテンションの選び方']] },
   { page: 'scale', items: [...SCALES.map(s => [s.id, s.name]), ['map', 'コードとスケールの対応表']], cols2: true },
@@ -57,21 +58,28 @@ const keyMeta = mode => `Key<b>${keyLabel(mode || 'major')}</b>`;
 function renderNav() {
   const cur = pageOf();
   $('#gnav').innerHTML = PAGES.slice(1).map(p => `<a href="#${p.id}"${cur === p.id ? ' aria-current="page"' : ''}>${p.en}${p.n ? `<sup>${p.n}</sup>` : ''}</a>`).join('');
-  $('#drNav').innerHTML = PAGES.map(p => `<li><a href="#${p.id}"><span class="ja">${p.ja}</span><span class="en">${p.en}${p.n ? ' ' + p.n : ''}</span></a></li>`).join('');
+  // ドロワー(スマホのメニュー):ページごとに、中の項目を開いて見られる
+  $('#drNav').innerHTML = PAGES.map(p => {
+    const col = INDEX.find(c => c.page === p.id), open = S.drOpen === p.id;
+    return `<li class="${open ? 'is-open' : ''}"><div class="dr-row"><a href="#${p.id}"><span class="ja">${p.ja}</span><span class="en">${p.en}${p.n ? ' ' + p.n : ''}</span></a>${col ? `<button class="dr-tg" data-dr="${p.id}" aria-expanded="${open}" aria-label="${p.ja}の項目を${open ? '閉じる' : '開く'}"><span class="pm" aria-hidden="true"></span></button>` : ''}</div>${col && open ? `<div class="dr-sub">${indexBody(col)}</div>` : ''}</li>`;
+  }).join('');
 }
 function renderKeys() {
   $('#keys').innerHTML = KEY_MAJ.map(([L, a], i) => `<button role="radio" aria-checked="${i === S.key}" data-key="${i}">${nn(L, a)}</button>`).join('');
 }
+function indexBody(col) {
+  const link = (page, [id, name, n]) => `<li><a href="#${page}" data-go="${page}:${id}">${name}${n != null ? `<sup>${n}</sup>` : ''}</a></li>`;
+  return col.groups
+    ? `<div class="cols2">${col.groups.map(([lab, items]) => `<div class="grp-h">${lab}</div>` + items.map(it => `<ul>${link(col.page, it)}</ul>`).join('')).join('')}</div>`
+    : col.cols2
+      ? `<div class="cols2">${col.items.map(it => `<ul>${link(col.page, it)}</ul>`).join('')}</div>`
+      : `<ul>${col.items.map(it => link(col.page, it)).join('')}</ul>`;
+}
+// 索引(メガメニュー)
 function indexHTML() {
-  const link = (page, [id, name]) => `<li><a href="#${page}" data-go="${page}:${id}">${name}</a></li>`;
   return `<div class="idx">${INDEX.map(col => {
     const pg = PAGES.find(p => p.id === col.page);
-    const body = col.groups
-      ? `<div class="cols2">${col.groups.map(([lab, items]) => `<div class="grp-h">${lab}</div>` + items.map(it => `<ul>${link(col.page, it)}</ul>`).join('')).join('')}</div>`
-      : col.cols2
-        ? `<div class="cols2">${col.items.map(it => `<ul>${link(col.page, it)}</ul>`).join('')}</div>`
-        : `<ul>${col.items.map(it => link(col.page, it)).join('')}</ul>`;
-    return `<section class="idx-col"><a class="idx-h" href="#${col.page}"><span class="en">${pg.en}<sup>${pg.n}</sup></span><span class="ja">${pg.ja}</span></a>${body}</section>`;
+    return `<section class="idx-col"><a class="idx-h" href="#${col.page}"><span class="en">${pg.en}<sup>${pg.n}</sup></span><span class="ja">${pg.ja}</span></a>${indexBody(col)}</section>`;
   }).join('')}</div>`;
 }
 
@@ -109,8 +117,19 @@ function progRow(p, i) {
     <div class="k"><span class="en">Key ${keyLabel(p.mode)}</span> ・ ${p.mood}</div></div>
   <div class="cw">${chartHTML(p.bars, p.mode, 'p:' + p.id)}</div>
   <div class="act">${playBtn('p:' + p.id)}<button class="sbtn" data-save="${p.id}" aria-pressed="${saved}">${saved ? '保存済み' : '保存'}</button></div>
-  ${open ? `<dl class="det"><dt>使い所</dt><dd>${p.use}</dd><dt>解説</dt><dd>${p.note}</dd>${p.vars.map(([lab, b]) => `<dt>変形</dt><dd><p>${lab}</p>${chartHTML(b, p.mode)}</dd>`).join('')}</dl>` : ''}
+  ${open ? `<dl class="det"><dt>使い所</dt><dd>${p.use}</dd><dt>解説</dt><dd>${p.note}</dd>${p.vars.map(([lab, b]) => `<dt>変形</dt><dd><p>${lab}</p>${chartHTML(b, p.mode)}</dd>`).join('')}
+    ${(p.songs || []).length ? `<dt>名前の由来</dt><dd>${p.songs.map(([t, a]) => `<p class="song"><span>${esc(t)} / ${esc(a)}</span>${extLinks(t + ' ' + a, t + ' ' + a)}</p>`).join('')}</dd>` : ''}
+    <dt>曲を探す</dt><dd><p class="song">${extLinks(searchWord(p) + (p.cat === 'jazz' ? ' ジャズ' : ' 使われている曲'), searchWord(p))}<span class="note-s">この進行が使われている曲を、外部サイトで検索します</span></p></dd></dl>` : ''}
 </article>`;
+}
+// 外部サイト(YouTube・Spotify)の検索ページへのリンク
+const extLinks = (yt, sp) => `<a class="ext" href="https://www.youtube.com/results?search_query=${encodeURIComponent(yt)}" target="_blank" rel="noopener">YouTube</a><a class="ext" href="https://open.spotify.com/search/${encodeURIComponent(sp)}" target="_blank" rel="noopener">Spotify</a>`;
+// 検索に使う言葉:「1645進行」のような数字の呼び名があればそれを使う
+function searchWord(p) {
+  const num = p.alias.find(a => /^\d{3,4}$/.test(a));
+  if (num) return num + '進行';
+  if (/^[ⅠⅡⅢⅣⅤⅥⅦ][ⅠⅡⅢⅣⅤⅥⅦm7–M]+ 進行$/.test(p.name)) return p.name.replace(/[^ⅠⅡⅢⅣⅤⅥⅦ]/g, '').replace(/[ⅠⅡⅢⅣⅤⅥⅦ]/g, ch => 'ⅠⅡⅢⅣⅤⅥⅦ'.indexOf(ch) + 1) + '進行';
+  return p.name;
 }
 
 /* ---------- スケールの行 ---------- */
@@ -131,22 +150,31 @@ function scaleRow(sc, i) {
 /* ---------- ページ ---------- */
 function pageTop() {
   const saved = PROGS.filter(p => S.saved.has(p.id));
-  return head('Index', '索引', keyMeta()) + indexHTML() +
-    `<section class="sec"><div class="eyebrow">Saved</div><h2>保存した進行</h2>
-     <div class="rows">${saved.length ? saved.map(progRow).join('') : '<p class="empty">進行の「保存」を押すと、ここに並びます。</p>'}</div></section>` + pager('top');
+  return head('Home', 'ホーム', keyMeta()) +
+    `<section class="sec first"><div class="eyebrow">Saved</div><h2>保存した進行</h2>
+     <div class="rows">${saved.length ? saved.map(progRow).join('') : '<p class="empty">進行の「保存」を押すと、ここに並びます。項目は上の「索引」から開けます。</p>'}</div></section>
+     <section class="sec"><div class="eyebrow">Songs</div><h2>保存した曲</h2>
+     <div class="rows">${S.songs.length ? songRows() : '<p class="empty">「分析」で読み込んだ曲の「保存」を押すと、ここに並びます。</p>'}</div></section>` + pager('top');
 }
+const songRows = () => S.songs.map((sg, i) => `
+      <div class="srow"><span class="no">${pad(i + 1)}</span>
+       <button class="srow-t" data-song-open="${esc(sg.id)}"><b>${esc(sg.title)}</b><span class="note-s">${esc(sg.artist)}${sg.artist ? ' ・ ' : ''}${SRC[sg.source] || ''}</span></button>
+       <button class="sbtn" data-song-del="${esc(sg.id)}">削除</button></div>`).join('');
 function pageProg() {
-  const list = PROGS.filter(p => p.cat === S.tab);
-  return crumb([['索引', '#top'], ['進行', '#progression'], [catName(S.tab)]]) + head('Progression', '進行', keyMeta()) +
+  let n = 0;
+  const groups = SUBS[S.tab].map(([sid, name]) => ({ sid, name, list: PROGS.filter(p => p.cat === S.tab && p.sub === sid) })).filter(g => g.list.length);
+  return crumb([['ホーム', '#top'], ['進行', '#progression'], [catName(S.tab)]]) + head('Progression', '進行', keyMeta()) +
     `<div class="tabs" role="tablist">${CATS.map(([id, lab]) => `<button role="tab" aria-selected="${S.tab === id}" data-tab="${id}">${lab}<sup>${PROGS.filter(p => p.cat === id).length}</sup></button>`).join('')}</div>
-     <div class="bar-tools">${S.tab === 'mod' ? '<span class="note-s">度数とコード名は転調前のキーで書いています</span>' : ''}</div>
-     <div class="rows">${list.map(progRow).join('')}</div>` + pager('progression');
+     <nav class="subnav" aria-label="分類">${groups.map(g => `<button data-jump="g-${S.tab}-${g.sid}">${g.name}<sup>${g.list.length}</sup></button>`).join('')}</nav>
+     ${S.tab === 'mod' ? '<p class="note-s">度数とコード名は転調前のキーで書いています</p>' : ''}
+     ${groups.map(g => `<section class="pgrp" id="g-${S.tab}-${g.sid}"><h2 class="pgrp-h">${g.name}<sup>${g.list.length}</sup></h2>
+       <div class="rows">${g.list.map(p => progRow(p, n++)).join('')}</div></section>`).join('')}` + pager('progression');
 }
 function pageDiatonic() {
   const d = DIATONIC.find(x => x.id === S.dmode) || DIATONIC[0];
   const toks = diatonicToks(d, S.dsize);
   const chords = toks.map(t => chordOf(t, S.key, d.mode));
-  return crumb([['索引', '#top'], ['ダイアトニック', '#diatonic'], [d.name]]) + head('Diatonic', 'ダイアトニック', keyMeta(d.mode)) +
+  return crumb([['ホーム', '#top'], ['ダイアトニック', '#diatonic'], [d.name]]) + head('Diatonic', 'ダイアトニック', keyMeta(d.mode)) +
     `<div class="tabs" role="tablist">${DIATONIC.map(x => `<button role="tab" aria-selected="${x.id === d.id}" data-dmode="${x.id}">${x.name}</button>`).join('')}</div>
      <div class="bar-tools"><div class="seg" role="group" aria-label="和音の数"><button aria-pressed="${S.dsize === 3}" data-dsize="3">3和音</button><button aria-pressed="${S.dsize === 4}" data-dsize="4">4和音</button></div></div>
      <div class="dtw"><table class="dt">
@@ -172,7 +200,7 @@ function diatonicToks(d, size) {
   });
 }
 function pageChord() {
-  return crumb([['索引', '#top'], ['コードの使い所']]) + head('Chord', 'コードの使い所', keyMeta()) +
+  return crumb([['ホーム', '#top'], ['コードの使い所']]) + head('Chord', 'コードの使い所', keyMeta()) +
     `<div class="rows">${USES.map((u, i) => `<section class="blk" id="u-${u.id}"><div class="no">${pad(i + 1)}</div>
       <div><h2>${u.name}</h2><p class="lead">${u.lead}</p><p class="body">${u.body}</p></div>
       <div class="blk-r"><div><div class="sub-h">代表的なコード</div><div class="mem">${u.list.map(([lab, t]) => chordBtn(t, 'major', lab)).join('')}</div></div>
@@ -185,7 +213,7 @@ function tensionTable(c) {
 }
 function pageTension() {
   const scName = id => SCALES.find(s => s.id === id).name;
-  return crumb([['索引', '#top'], ['テンション']]) + head('Tension', 'テンション', keyMeta()) +
+  return crumb([['ホーム', '#top'], ['テンション']]) + head('Tension', 'テンション', keyMeta()) +
     `<p class="note-s">キーの主音をルートにして表示しています。「避ける」はコードの音と半音でぶつかる音(アボイドノート)。</p>
      <div class="rows">${TENSION_ITEMS.map((t, i) => {
        const c = chordOf('I' + t.q, S.key, 'major');
@@ -204,7 +232,7 @@ function pageTension() {
 }
 function pageScale() {
   const scName = id => SCALES.find(s => s.id === id).name;
-  return crumb([['索引', '#top'], ['スケール']]) + head('Scale', 'スケール', keyMeta()) +
+  return crumb([['ホーム', '#top'], ['スケール']]) + head('Scale', 'スケール', keyMeta()) +
     `<div class="bar-tools"><span class="note-s">キーの主音から始めて表示しています</span>${labelSeg()}</div>
      <div class="rows">${SCALES.map(scaleRow).join('')}</div>
      <section class="sec" id="s-map" style="scroll-margin-top:150px"><div class="eyebrow">Chord-Scale</div><h2>コードとスケールの対応表</h2>
@@ -259,7 +287,7 @@ const SRC = { ufret: 'U-FRET', chordwiki: 'ChordWiki', paste: '貼り付け' };
 function pageAnalyze() {
   if (S.song && !S.ana && !S.anaErr) { try { S.ana = Analyzer.analyzeSong(S.song); } catch (e) { S.ana = null; } }
   const r = S.ana;
-  let h = crumb([['索引', '#top'], ['分析']]) + head('Analyze', '分析', r ? `Key<b>${esc(r.key.name)}</b>` : '');
+  let h = crumb([['ホーム', '#top'], ['分析']]) + head('Analyze', '分析', r ? `Key<b>${esc(r.key.name)}</b>` : '');
   h += `<form class="imp" id="impForm" autocomplete="off" novalidate>
     <label class="sub-h" for="impUrl">U-FRET の曲のページの URL</label>
     <div class="imp-row"><input id="impUrl" type="url" inputmode="url" placeholder="https://www.ufret.jp/song.php?data=…" value="${esc(S.impUrl)}">
@@ -276,10 +304,7 @@ function pageAnalyze() {
   </form>`;
   if (r) h += anaResult(r);
   if (S.songs.length) {
-    h += `<section class="sec"><div class="eyebrow">Saved</div><h2>保存した曲</h2><div class="rows">${S.songs.map((sg, i) => `
-      <div class="srow"><span class="no">${pad(i + 1)}</span>
-       <button class="srow-t" data-song-open="${esc(sg.id)}"><b>${esc(sg.title)}</b><span class="note-s">${esc(sg.artist)}${sg.artist ? ' ・ ' : ''}${SRC[sg.source] || ''}</span></button>
-       <button class="sbtn" data-song-del="${esc(sg.id)}">削除</button></div>`).join('')}</div></section>`;
+    h += `<section class="sec"><div class="eyebrow">Saved</div><h2>保存した曲</h2><div class="rows">${songRows()}</div></section>`;
   }
   return h + pager('analyze');
 }
@@ -430,7 +455,7 @@ function play(id) {
     attr = 'data-ci';
   } else {
     const sc = SCALES.find(x => x.id === key), r = scaleOf(sc, S.key);
-    const base = 52 + mod(r.root.pc - 4, 12);
+    const base = 55 + mod(r.root.pc - 7, 12);
     const up = [...r.tones.map((t, j) => ({ m: base + t.semi, j })), { m: base + 12, j: 0 }];
     const seq = [...up, ...up.slice(0, -1).reverse()];
     steps = seq.map(x => ({ midis: [x.m], dur: 0.26, j: x.j }));
@@ -477,6 +502,10 @@ function clearSearch() { ['#q', '#q2'].forEach(s => ($(s).value = '')); ['#qr', 
 function go(page, id) {
   closeOverlays();
   if (page === 'diatonic') { S.dmode = id; store.set('dmode', id); }
+  else if (page === 'progression' && id && id[0] === '@') {
+    const [cat, sid] = id.slice(1).split('.');
+    S.tab = cat; store.set('tab', cat); S.scrollTo = `g-${cat}-${sid}`;
+  }
   else if (id && PREFIX[page]) {
     const el = PREFIX[page] + id;
     S.scrollTo = el;
@@ -530,7 +559,12 @@ document.addEventListener('click', e => {
     return;
   }
   if (d.songSave != null) { toggleSaveSong(); return; }
-  if (d.songOpen) { const sg = S.songs.find(x => x.id === d.songOpen); if (sg) { S.anaErr = ''; setSong(sg); S.scrollTo = 'a-res'; render(); } return; }
+  if (d.songOpen) {
+    const sg = S.songs.find(x => x.id === d.songOpen);
+    if (sg) { S.anaErr = ''; setSong(sg); S.scrollTo = 'a-res'; if (pageOf() !== 'analyze') location.hash = 'analyze'; else render(); }
+    return;
+  }
+  if (d.dr) { S.drOpen = S.drOpen === d.dr ? null : d.dr; renderNav(); return; }
   if (d.songDel) { S.songs = S.songs.filter(x => x.id !== d.songDel); store.set('songs', S.songs); render(); return; }
   if (d.jump) { const el = document.getElementById(d.jump); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('is-flash'); setTimeout(() => el.classList.remove('is-flash'), 1700); } return; }
   if (d.go) { e.preventDefault(); const [pg, id] = d.go.split(':'); go(pg, id); return; }
