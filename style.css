@@ -494,3 +494,12 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .tabs { gap: 12px; }
   .tabs button { font-size: 13px; }
 }
+
+/* ---------- iPhone(Safari)で横にはみ出さないようにする ----------
+   Safari は入力欄の「最低限ほしい幅」が大きく、それを入れた枠が画面より広がっていた */
+html, body { overflow-x: clip; }
+.imp, .bmk, .paste { grid-template-columns: minmax(0, 1fr); }
+.imp > *, .bmk > * { min-width: 0; }
+.imp-row input { width: 0; min-width: 0; flex: 1 1 0; }
+.imp-row .btn-dark { flex: none; }
+.dr-search input, .search input { min-width: 0; }
