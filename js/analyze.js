@@ -93,7 +93,7 @@ const Analyzer = (() => {
   function keyScore(cs, T) {
     let s = 0;
     cs.forEach((c, i) => {
-      s += fit(c, T) * (c.w || 1);
+      s += fit(c, T);
       const n = cs[i + 1];
       if (!n) return;
       const r1 = mod(c.pc - T, 12), r2 = mod(n.pc - T, 12);
@@ -106,12 +106,9 @@ const Analyzer = (() => {
     if (mod(first.pc - T, 12) === 0) s += 0.5;
     return s;
   }
-  function bestKey(cs, hintT) {
+  function bestKey(cs) {
     let T = 0, best = -Infinity;
-    for (let k = 0; k < 12; k++) {
-      const s = keyScore(cs, k) + (k === hintT ? 0.12 * cs.length : 0);
-      if (s > best + 1e-9) { best = s; T = k; }
-    }
+    for (let k = 0; k < 12; k++) { const s = keyScore(cs, k); if (s > best + 1e-9) { best = s; T = k; } }
     return { T, score: best };
   }
   function modeOf(cs, T) {
@@ -362,23 +359,13 @@ const Analyzer = (() => {
       const items = [];
       s.lines.forEach((line, li) => line.forEach((sym, ci) => {
         const c = parseSymbol(sym);
-        const t = song.timing && song.timing[bi] && song.timing[bi][li] ? song.timing[bi][li][ci] : null;
-        items.push(c ? { ...c, li, ci, t } : { sym, li, ci, t, bad: true });
+        items.push(c ? { ...c, li, ci } : { sym, li, ci, bad: true });
       }));
       return { label: s.label || '', items, lines: s.lines.length };
     });
     const all = blocks.flatMap(b => b.items.filter(x => !x.bad));
     if (all.length < 2) throw new Error('コードが少なすぎて分析できません。');
-    // 音源に合わせた時刻があれば、コードの長さを求め、キーの判定で長いコードほど重く数える
-    const timed = blocks.flatMap(b => b.items).filter(x => typeof x.t === 'number');
-    if (timed.length >= 4) {
-      const end = song.audio && song.audio.duration ? song.audio.duration : timed[timed.length - 1].t + 2;
-      timed.forEach((x, i) => (x.dur = Math.max(0, (i + 1 < timed.length ? timed[i + 1].t : end) - x.t)));
-      const ds = timed.map(x => x.dur).filter(d => d > 0).sort((a, b) => a - b), med = ds[Math.floor(ds.length / 2)] || 1;
-      timed.forEach(x => (x.w = Math.min(2.5, Math.max(0.4, x.dur / med))));
-    }
-    const hint = song.keyHint ? (song.keyHint.mode === 'minor' ? mod(song.keyHint.pc + 3, 12) : song.keyHint.pc) : undefined;
-    const g = bestKey(all, hint);
+    const g = bestKey(all);
     const gKey = makeKey(g.T, modeOf(all, g.T), all);
     // ブロックごとのキー(4つ以上コードがあり、はっきり別のキーに合うときだけ転調とみなす)
     let prevKey = gKey;

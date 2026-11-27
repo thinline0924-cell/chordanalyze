@@ -48,22 +48,6 @@
   </div>
   <ul class="dr-nav" id="drNav"></ul>
 </div>
-<audio id="syncAudio" preload="auto" playsinline></audio>
-<div id="ytDock"><div id="ytPlayer"></div></div>
-<div class="pbar" id="pbar" aria-label="再生">
-  <div class="pb-main">
-    <button class="pb-play" data-sync-play aria-label="再生・一時停止"><i class="tri"></i></button>
-    <div class="pb-chord"><b class="pb-now">—</b><span class="pb-next"></span></div>
-    <button class="pb-tap" data-sync-tap>タップ</button>
-  </div>
-  <div class="pb-sub">
-    <span class="pb-time">0:00 / 0:00</span>
-    <input type="range" id="pbSeek" min="0" max="1" step="0.1" value="0" aria-label="再生位置">
-    <div class="seg" role="group" aria-label="再生速度"><button data-sync-rate="0.5">0.5</button><button data-sync-rate="0.75">0.75</button><button data-sync-rate="1">1.0</button></div>
-    <button class="lnk" data-sync-tapmode aria-pressed="false">タップで合わせる</button>
-    <button class="lnk" data-sync-close>閉じる</button>
-  </div>
-</div>
 <!-- body:end -->
 <script src="js/theory.js"></script>
 <script src="js/data.js"></script>
@@ -71,8 +55,6 @@
 <script src="js/sound.js"></script>
 <script src="js/analyze.js"></script>
 <script src="js/bookmarklet.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/sync.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
