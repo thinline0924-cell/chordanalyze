@@ -95,6 +95,22 @@ FLEX.forEach(([line, want]) => {
   if (want && !got.some(p => p.id === want)) fail('柔軟な照合で見つからない', line, want, got.map(p => p.id).join());
   if (!want && got.length) fail('柔軟な照合で見つけすぎ', line, got.map(p => p.id).join());
 });
+// ディミニッシュ・裏コード・ベースラインは、柔軟な照合で飛ばされても、技法として見つける。進行の名前も正しく付ける
+const ORN = [
+  ['CM7 C#dim7 Dm7 D#dim7 Em7 A7 Dm7 G7', 'passdim', 'passdim'],
+  ['Em7 Ebdim7 Dm7 G7 C', 'passdim', 'dimdown'],
+  ['FM7 F#dim7 C/G A7 Dm7 G7 C', 'passdim', 'passdim4'],
+  ['Dm7 Db7 CM7', 'tritone', 'tritone'],
+  ['CM7 Eb7 Ab7 Db7 CM7', 'tritone', 'tritoneturn'],
+  ['FM7 G7 Em7 Bb7 Am7', 'tritone', 'oudou'],
+  ['C G G#dim7 Am Em F C F G', 'passdim', 'canon'],
+  ['C C/B C/Bb F/A Fm/Ab C/G', 'chromdown', 'chromdown'],
+];
+ORN.forEach(([line, kind, prog]) => {
+  const b = A.analyzeSong({ sections: [{ label: '', lines: [line.split(' ')] }] }).blocks[0];
+  if (!b.tech.some(t => t.kind === kind)) fail('技法が見つからない', line, kind);
+  if (!b.progs.some(p => p.id === prog)) fail('進行が見つからない', line, prog, b.progs.map(p => p.id).join());
+});
 // マイナーキーの曲
 const rm = A.analyzeSong({ sections: [{ label: '', lines: [['Am', 'Dm', 'E7', 'Am'], ['F', 'G', 'E7', 'Am']] }] });
 if (rm.key.name !== 'Am') fail('マイナーキーの判定', rm.key.name);
