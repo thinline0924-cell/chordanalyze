@@ -24,6 +24,7 @@ const S = {
   ana: null,                                // 分析の結果
   av: 'orig',                               // 譜面の表示:orig 原曲キー / sel 選んだキー
   impUrl: '', pasteText: '', anaPaste: false, anaBusy: false, anaErr: '', bmNote: '',
+  syncMode: 'align', syncBusy: null, syncErr: '', ytUrl: '',   // 音源・YouTube との同期
 };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 if (!(S.key >= 0 && S.key < 12)) S.key = 0;
@@ -258,6 +259,47 @@ function setSong(song) {
   S.song = song;
   try { S.ana = Analyzer.analyzeSong(song); } catch (e) { S.ana = null; S.anaErr = e.message; }
   store.set('last', song);
+  Sync.rebuild(song);
+}
+// 別の曲を読み込んだら、前の曲の音源・動画との同期をやめる
+function newSong(song) { Sync.clear(); setSong(song); }
+/* ---------- 音源・YouTube との同期 ---------- */
+Sync.onChange = song => store.set('last', song);
+Sync.nameOf = (bi, ii) => { const c = document.querySelector(`.ch[data-pid="a:${bi}"][data-ci="${ii}"] .n`); return c ? c.textContent : ''; };
+async function loadAudio(file) {
+  if (!file) return;
+  S.syncErr = ''; S.syncBusy = 0; render();
+  try {
+    const buf = await file.arrayBuffer();
+    const base = S.syncMode === 'align' && S.song && S.song.source !== 'audio' ? { ...S.song, timing: null } : null;
+    const song = await AudioAna.analyzeFile(buf, {
+      song: base, name: file.name.replace(/\.[^.]+$/, ''), parse: Analyzer.parseSymbol,
+      onProgress: pr => { S.syncBusy = pr; const el = $('#syncProg'); if (el) el.textContent = `音を分析しています… ${Math.round(pr * 100)}%`; },
+    });
+    S.av = 'orig';
+    setSong(song);
+    Sync.setAudio(URL.createObjectURL(file));
+    Sync.rebuild(S.song);
+    S.scrollTo = 'a-res';
+  } catch (e) {
+    S.syncErr = e && e.message && !/decode|Decoding|EncodingError/i.test(e.message) ? e.message
+      : 'この音源は読み込めませんでした。mp3・m4a・wav などの音楽ファイルを選んでください(Apple Music などのコピー防止付きの曲は使えません)。';
+  } finally { S.syncBusy = null; render(); Sync.paint(true); }
+}
+const ytIdOf = v => { const m = /(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([A-Za-z0-9_-]{11})/.exec(v); return m ? m[1] : (/^[A-Za-z0-9_-]{11}$/.test(v.trim()) ? v.trim() : null); };
+async function loadYouTube(v) {
+  S.syncErr = '';
+  const id = ytIdOf(v || '');
+  if (!id) { S.syncErr = 'YouTube の動画の URL を貼ってください(youtube.com/watch?v=… や youtu.be/… の形)。'; render(); return; }
+  if (!S.song) { S.syncErr = '先にコード譜を読み込んでください(U-FRET の URL、ブックマークレット、貼り付けのどれか)。'; render(); return; }
+  S.song.yt = id; store.set('last', S.song);
+  render();
+  try {
+    await Sync.setYouTube(id);
+    Sync.rebuild(S.song);
+    if (!Sync.hasTiming()) { Sync.tap = true; Sync.cursor = 0; }
+  } catch (e) { S.syncErr = e.message; render(); }
+  Sync.paint(true);
 }
 async function importUrl(url) {
   S.impUrl = url; S.anaErr = ''; S.anaBusy = true; render();
@@ -268,7 +310,7 @@ async function importUrl(url) {
     if (!r.ok || !j) throw new Error(j && j.error ? j.error : r.status === 404
       ? '読み込み用のサーバーが見つかりません。このサイトを Render の「Web サービス」として公開しているか確かめてください(README の手順)。'
       : '曲のページを読み込めませんでした。少し待ってから、もう一度試してください。');
-    setSong(j);
+    newSong(j);
     S.scrollTo = 'a-res';
   } catch (e) {
     S.anaErr = e instanceof TypeError
@@ -281,9 +323,9 @@ function analyzePasted() {
   S.pasteText = t; S.anaErr = '';
   const song = Analyzer.parsePasted(t);
   if (!song.sections.length) { S.anaErr = 'コードが見つかりませんでした。「C G Am F」や「[C]歌詞」の形で貼り付けてください。'; render(); return; }
-  setSong(song); S.scrollTo = 'a-res'; render();
+  newSong(song); S.scrollTo = 'a-res'; render();
 }
-const SRC = { ufret: 'U-FRET', chordwiki: 'ChordWiki', paste: '貼り付け' };
+const SRC = { ufret: 'U-FRET', chordwiki: 'ChordWiki', paste: '貼り付け', audio: '音源から推定' };
 function pageAnalyze() {
   if (S.song && !S.ana && !S.anaErr) { try { S.ana = Analyzer.analyzeSong(S.song); } catch (e) { S.ana = null; } }
   const r = S.ana;
@@ -301,7 +343,20 @@ function pageAnalyze() {
       <button type="button" class="lnk" data-bm-copy>スマホで登録する(コードをコピー)</button>
       ${S.bmNote ? `<p class="note-s" role="status">${esc(S.bmNote)}</p>` : ''}</div>
     ${S.anaPaste ? `<div class="paste"><textarea id="impText" rows="7" placeholder="例&#10;[Aメロ]&#10;C G Am F&#10;FM7 G7 Em7 Am">${esc(S.pasteText)}</textarea><button type="button" class="sbtn" data-paste-go>貼り付けたコードを分析する</button></div>` : ''}
-  </form>`;
+  </form>
+  <section class="syncsrc">
+    <div class="sub-h">音源と同期</div>
+    <div class="src-row">
+      <label class="btn-dark file-btn" for="audioFile">音源ファイルを選ぶ</label>
+      <input id="audioFile" class="vh" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.flac,.ogg">
+      ${S.song && S.song.source !== 'audio' ? `<div class="seg" role="group" aria-label="音源の使い方"><button aria-pressed="${S.syncMode === 'align'}" data-sync-mode="align">譜面に合わせる</button><button aria-pressed="${S.syncMode === 'recog'}" data-sync-mode="recog">音だけで推定</button></div>` : ''}
+    </div>
+    <p class="note-s">持っている曲のファイルを、この端末の中だけで分析します(サーバーには送りません)。${S.song && S.song.source !== 'audio' ? (S.syncMode === 'align' ? '読み込んだコード譜を、音に合わせます。' : '音だけからコードを推定します(読み込んだコード譜は使いません)。') : 'コード譜を読み込んでいれば音に合わせ、なければ音だけからコードを推定します。'}</p>
+    ${S.syncBusy != null ? `<p class="note-s" id="syncProg" role="status">音を分析しています… ${Math.round(S.syncBusy * 100)}%</p>` : ''}
+    <div class="imp-row"><input id="ytUrl" type="url" inputmode="url" placeholder="YouTube の URL" value="${esc(S.ytUrl || (S.song && S.song.yt ? 'https://youtu.be/' + S.song.yt : ''))}"><button type="button" class="sbtn" data-yt-load>YouTube と同期</button></div>
+    <p class="note-s">YouTube は音を分析できないので、再生しながら「タップ」でコードの位置を合わせます。</p>
+    ${S.syncErr ? `<p class="err" role="alert">${esc(S.syncErr)}</p>` : ''}
+  </section>`;
   if (r) h += anaResult(r);
   return h + pager('analyze');
 }
@@ -310,7 +365,8 @@ function anaResult(r) {
   const selName = tonicName(mod(r.key.pc + anaShift(), 12), r.key.mode) + (r.key.mode === 'minor' ? 'm' : '');
   let h = `<section class="song-hd" id="a-res">
     <div class="song-t"><div class="eyebrow">Song</div><h2>${esc(sg.title || '貼り付けたコード')}</h2>
-      <p class="note-s">${esc(sg.artist)}${sg.artist ? ' ・ ' : ''}${SRC[sg.source] || ''}${sg.url ? ` ・ <a href="${esc(sg.url)}" target="_blank" rel="noopener">元のページ</a>` : ''}</p></div>
+      <p class="note-s">${esc(sg.artist)}${sg.artist ? ' ・ ' : ''}${SRC[sg.source] || ''}${sg.url ? ` ・ <a href="${esc(sg.url)}" target="_blank" rel="noopener">元のページ</a>` : ''}</p>
+      ${sg.audio ? `<p class="note-s">音源:キー ${esc(sg.keyHint ? sg.keyHint.name : '—')}(音から推定)・テンポ約 ${sg.audio.bpm}${sg.audio.fit != null ? `・音との合い具合 ${sg.audio.fit > 0.95 ? '高' : sg.audio.fit > 0.8 ? '中' : '低(ずれていたら「タップで合わせる」)'}` : ''}${Sync.kind ? '' : '・同期するには、音源ファイルをもう一度選んでください'}</p>` : ''}</div>
     <div class="song-act"><div class="seg" role="group" aria-label="譜面のキー"><button aria-pressed="${S.av === 'orig'}" data-av="orig">原曲キー ${esc(r.key.name)}</button><button aria-pressed="${S.av === 'sel'}" data-av="sel">選んだキー ${esc(selName)}</button></div></div></section>`;
   // 譜面の中の位置:b.seq(同じコードの連続を1つにした並び)の番号 → b.items の範囲
   const spans = r.blocks.map(b => {
@@ -375,6 +431,10 @@ function render() {
     if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('is-flash'); }
   }
   markCurrent();
+  const onAna = pg === 'analyze';
+  if (!onAna && document.body.classList.contains('on-analyze')) Sync.pause();   // ほかのページへ移ったら止める(動画も隠れるため)
+  document.body.classList.toggle('on-analyze', onAna);
+  if (onAna) Sync.paint(true);
 }
 function rerenderRow(el) {
   const node = document.getElementById(el);
@@ -396,7 +456,8 @@ function keepAnchor(el, change) {
 function revealAbovePanel(el) {
   if (!el || !el.isConnected || !isNarrow()) return;
   // パネルは下からせり上がる動きがあるので、見た目の位置ではなく、最終的な高さから上端を出す
-  const limit = innerHeight - $('#panel').offsetHeight - 12, r = el.getBoundingClientRect();
+  const pn = $('#panel'), below = parseFloat(getComputedStyle(pn).bottom) || 0;   // 再生バーがあるときは、その上にパネルが出る
+  const limit = innerHeight - below - pn.offsetHeight - 12, r = el.getBoundingClientRect();
   if (r.bottom > limit) window.scrollBy(0, r.bottom - limit);
 }
 function openPanel(tok, mode, kp, anchor) {
@@ -556,6 +617,11 @@ document.addEventListener('click', e => {
     renderKeys(); render(); renderPanel();
     return;
   }
+  if (d.tok && Sync.tap && Sync.kind && (d.pid || '').startsWith('a:')) {
+    Sync.setCursor(+d.pid.slice(2), +d.ci);
+    const it = Sync.items[Sync.cursor]; if (it && it.t != null) Sync.seek(Math.max(0, it.t - 1));
+    return;
+  }
   if (d.tok) { const kp = d.kp != null ? +d.kp : null; Organ.chord(chordOf(d.tok, kp != null ? kp : S.key, d.mode)); openPanel(d.tok, d.mode, kp, t); return; }
   if (d.play) { play(d.play); return; }
   if (d.toggle) { S.open.has(d.toggle) ? S.open.delete(d.toggle) : S.open.add(d.toggle); rerenderRow(d.toggle); return; }
@@ -568,6 +634,13 @@ document.addEventListener('click', e => {
   if (d.av) { S.av = d.av; render(); return; }
   if (d.pasteToggle != null) { S.anaPaste = !S.anaPaste; render(); if (S.anaPaste) $('#impText').focus(); return; }
   if (d.pasteGo != null) { analyzePasted(); return; }
+  if (d.syncMode) { S.syncMode = d.syncMode; render(); return; }
+  if (d.ytLoad != null) { S.ytUrl = $('#ytUrl').value; loadYouTube(S.ytUrl); return; }
+  if (d.syncPlay != null) { Sync.toggle(); return; }
+  if (d.syncRate) { Sync.setRate(+d.syncRate); return; }
+  if (d.syncTap != null) { Sync.tapNow(S.song); return; }
+  if (d.syncTapmode != null) { Sync.tap = !Sync.tap; if (Sync.tap) { const i = Math.max(0, Sync.nowIdx); Sync.cursor = Sync.hasTiming() ? Math.min(Sync.items.length - 1, i + 1) : 0; } Sync.paint(true); return; }
+  if (d.syncClose != null) { Sync.clear(); render(); return; }
   if (d.bm != null) { e.preventDefault(); S.bmNote = 'この枠は押すのではなく、ブックマークバーへドラッグして登録します。'; render(); return; }
   if (d.bmCopy != null) {
     const href = bookmarkletHref(location.origin);
@@ -601,7 +674,10 @@ document.addEventListener('submit', e => {
   if (/chordwiki\.org/i.test(v)) { S.impUrl = v; S.anaErr = 'ChordWiki は、相手のサイトの仕組み(Cloudflare)でサーバーから読み込めません。下の「ブックマークレット」を使うか、ページのコードを「貼り付け」てください。'; render(); return; }
   if (!S.anaBusy) importUrl(v);
 });
+document.addEventListener('change', e => { if (e.target.id === 'audioFile') loadAudio(e.target.files && e.target.files[0]); });
 document.addEventListener('input', e => {
+  if (e.target.id === 'pbSeek') Sync.seek(+e.target.value);
+  if (e.target.id === 'ytUrl') S.ytUrl = e.target.value;
   if (e.target.id === 'impUrl') S.impUrl = e.target.value;
   if (e.target.id === 'impText') S.pasteText = e.target.value;
 });
@@ -614,7 +690,7 @@ function takeHashSong() {
   history.replaceState(null, '', '#analyze');
   if (!song) { S.anaErr = 'ブックマークレットから受け取ったデータを読めませんでした。'; return true; }
   S.anaErr = ''; S.impUrl = song.url || '';
-  setSong(song); S.scrollTo = 'a-res';
+  newSong(song); S.scrollTo = 'a-res';
   return true;
 }
 // 受け取ったデータの形と大きさを確かめる(よその人が作ったリンクでも安全なように)

@@ -129,5 +129,31 @@ if (JSON.stringify(uf).includes('歌詞')) fail('U-FRET の歌詞が残ってい
 ['https://www.ufret.jp/song.php?data=41', 'チェリー / スピッツ ギターコード - U-FRET https://www.ufret.jp/song.php?data=41', 'https://www.ufret.jp/song.php?data=41&capo=0'].forEach(u => { try { P.checkUrl(u); } catch (e) { fail('URL を受け付けない', u); } });
 ['https://example.com/', 'https://ja.chordwiki.org/wiki/%E6%81%8B', 'https://ch.chordwiki.org/wiki.cgi?c=view&t=abc', 'file:///etc/passwd', 'https://www.ufret.jp/../song.php?data=1x', 'http://169.254.169.254/'].forEach(u => { try { P.checkUrl(u); fail('URL を通してしまう', u); } catch (e) { /* OK */ } });
 
-console.log(bad ? `NG ${bad} 件` : `OK(コード ${all.length} 個 × 12キー、進行 ${D.PROGS.length} 件、スケール ${D.SCALES.length} 件、分析のテスト)`);
+/* ---------- 音源の分析(作った音で確かめる) ---------- */
+const AU = require('../js/audio.js');
+async function audioChecks() {
+  const SR = AU.SR, bpm = 120, beat = 60 / bpm, lead = 1;
+  const prog = ['C', 'G', 'Am', 'F', 'C/E', 'Dm7', 'G7', 'C'];
+  const pcm = new Float32Array(Math.ceil((lead + prog.length * 4 * beat + 1) * SR));
+  const tone = (midi, t0, t1, amp) => { const f = 440 * Math.pow(2, (midi - 69) / 12); for (let i = Math.floor(t0 * SR); i < Math.min(pcm.length, t1 * SR); i++) { const t = i / SR - t0; pcm[i] += amp * Math.min(1, t * 30) * Math.exp(-t * 0.6) * (Math.sin(2 * Math.PI * f * t) + 0.4 * Math.sin(4 * Math.PI * f * t) + 0.2 * Math.sin(6 * Math.PI * f * t)); } };
+  let seed = 1; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  prog.forEach((sym, ci) => {
+    const c = A.parseSymbol(sym), t0 = lead + ci * 4 * beat;
+    T.Q[c.q].iv.forEach(([, x]) => tone(60 + c.pc + x, t0, t0 + 4 * beat, 0.12));
+    tone(36 + (c.bass ? c.bass.pc : c.pc), t0, t0 + 4 * beat, 0.2);
+    for (let b = 0; b < 4; b++) { const ts = t0 + b * beat; for (let i = Math.floor(ts * SR); i < (ts + 0.03) * SR; i++) pcm[i] += rnd() * 0.5 * Math.exp(-(i / SR - ts) * 120); }
+  });
+  const on = await AU.onsetEnvelope(pcm), bt = AU.beats(on.env, on.fps);
+  if (Math.abs(bt.bpm - bpm) > 3) fail('音源:テンポ', bt.bpm);
+  const bc = AU.beatChroma(await AU.chroma(pcm), bt.times, pcm.length / SR);
+  const rec = AU.toSong(bc, AU.recognize(bc), 't').sections.flatMap(x => x.lines.flat()).join(' ');
+  if (rec !== prog.join(' ')) fail('音源:音だけの推定', rec);
+  const al = AU.align(bc, { sections: [{ label: '', lines: [prog.slice(0, 4), prog.slice(4)] }] }, A.parseSymbol);
+  al.timing.flat(2).forEach((t, i) => { if (Math.abs(t - (lead + i * 4 * beat)) > 0.1) fail('音源:譜面合わせの時刻', i, t); });
+  const k = AU.key(bc);
+  if (!(k.pc === 0 && k.mode === 'major')) fail('音源:キー', k.pc, k.mode);
+}
+audioChecks().catch(e => fail('音源の分析でエラー', e.message)).then(() => {
+console.log(bad ? `NG ${bad} 件` : `OK(コード ${all.length} 個 × 12キー、進行 ${D.PROGS.length} 件、スケール ${D.SCALES.length} 件、分析・音源のテスト)`);
 process.exit(bad ? 1 : 0);
+});
