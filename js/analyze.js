@@ -150,36 +150,109 @@ const Analyzer = (() => {
   }
   const tokenOf = (c, key) => degOf(c.pc, key, c.fam) + c.q + (c.bass ? '/' + degOf(c.bass.pc, key, '') : '');
 
-  /* ---------- 4. 進行の一覧との照合 ---------- */
-  const compat = (a, b) => a === b || (['maj', 'dom', 'sus'].includes(a) && ['maj', 'dom', 'sus'].includes(b)) || (['hd', 'dim'].includes(a) && ['hd', 'dim'].includes(b));
+  /* ---------- 4. 進行の一覧との照合(柔軟な照合) ----------
+     曲のコードは、そのままでは一覧の進行と1対1に並ばないことが多い。そこで:
+       1. 同じルート・同じベースのコードが続いたら、1つのまとまりにする(Gsus4→G→G7 は「Ⅴ」ひとつ、Am→AmM7→Am7 は「Ⅵm」ひとつ)
+       2. 進行の途中に入る経過的なコードは飛ばしてよい(1つの進行で2つまで):
+          次へ向かうドミナント(セカンダリードミナント・裏コード)、ツーファイブの「ツー」、ディミニッシュ、オーギュメント、sus4
+       3. 似た響きへの置き換えを許す(Ⅲm の代わりに Ⅲ7 など)
+     飛ばし・置き換えには減点を付け、減点が少ない並びを選ぶ。飛ばしや置き換えを使ったものは「変形」とする */
   const dedupe = (arr, k) => arr.filter((x, i) => i === 0 || k(arr[i - 1]) !== k(x));
+  const GROUP_MAJ = ['maj', 'dom', 'sus'], GROUP_DIM = ['hd', 'dim'];
+  // コードの種類どうしの「近さ」:0 は同じ、Infinity は別物
+  function famCost(a, b) {
+    if (a === b) return 0;
+    if ((GROUP_MAJ.includes(a) && GROUP_MAJ.includes(b)) || (GROUP_DIM.includes(a) && GROUP_DIM.includes(b))) return 0.15;
+    if ((a === 'min' && b === 'hd') || (a === 'hd' && b === 'min')) return 0.4;   // Ⅱm7 ⇔ Ⅱm7(♭5)
+    if ((a === 'min' && b === 'dom') || (a === 'dom' && b === 'min')) return 0.6;   // Ⅲm ⇔ Ⅲ7 など(メジャーの3和音への置き換えは別物とみなす)
+    return Infinity;
+  }
+  const setCost = (A, B) => { let c = Infinity; A.forEach(a => B.forEach(b => (c = Math.min(c, famCost(a, b))))); return c; };
+  // 同じルート・同じベースのコードの連続を1つにまとめる。first・last は元の並び(b.seq)の位置
+  function toEvents(list) {
+    const ev = [];
+    list.forEach((x, i) => {
+      const last = ev[ev.length - 1];
+      if (last && last.rel === x.rel && last.bass === x.bass) { last.fams.add(x.fam); last.last = i; }
+      else ev.push({ rel: x.rel, bass: x.bass, fams: new Set([x.fam]), first: i, last: i });
+    });
+    return ev;
+  }
+  // 一覧の進行が同じ並びのくり返し(循環進行の Ⅰ–Ⅵ–Ⅱ–Ⅴ ×2 など)なら、1回分だけで照らし合わせる。
+  // ただし1回分が3つより短くなるもの(2コードのくり返し)は、そのまま
+  function oneCycle(ev) {
+    const same = (a, b) => a.rel === b.rel && [...a.fams].join() === [...b.fams].join();
+    for (let k = 3; k <= ev.length / 2; k++) {
+      if (ev.length % k === 0 && ev.every((e, i) => same(e, ev[i % k]))) return ev.slice(0, k);
+    }
+    return ev;
+  }
   let PATTERNS = null;
   function patterns() {
     if (PATTERNS) return PATTERNS;
     PATTERNS = PROGS.filter(p => p.cat === 'pop' || p.cat === 'jazz').map(p => {
       const toks = p.bars.split('|').join(' ').trim().split(/\s+/);
-      const seq = dedupe(toks.map(t => { const c = chordOf(t, 0, p.mode); return { rel: mod(c.root.pc + (p.mode === 'minor' ? 9 : 0), 12), fam: famOf(c.q) }; }), x => x.rel + x.fam);
-      return { id: p.id, name: p.name, mood: p.mood, seq };
+      const shift = p.mode === 'minor' ? 9 : 0;   // 照合はメジャーキー(平行調のメジャー)の主音から測る
+      const list = toks.map(t => {
+        const c = chordOf(t, 0, p.mode);
+        return { rel: mod(c.root.pc + shift, 12), bass: mod((c.bass ? c.bass.pc : c.root.pc) + shift, 12), fam: famOf(c.q) };
+      });
+      return { id: p.id, name: p.name, mood: p.mood, seq: oneCycle(toEvents(list)) };
     }).filter(p => p.seq.length >= 3);
     return PATTERNS;
   }
+  const MAX_COST = 1.2, MAX_SKIPS = 2, SKIP_COST = 0.4;
+  // 飛ばしてよい経過的なコードか(p は、そのあとに来るはずの進行のコード)
+  function ornamental(e, p) {
+    const to = mod(p.rel - e.rel, 12);
+    if (e.fams.has('dim') || e.fams.has('hd') || e.fams.has('aug')) return true;
+    if (e.fams.size === 1 && e.fams.has('sus')) return true;
+    if (e.fams.has('dom') && (to === 5 || to === 11)) return true;   // 次へ向かうドミナント・裏コード
+    return false;
+  }
+  // 曲の s 番目のまとまりから、進行 P がいちばん少ない減点で当てはまる形を探す
+  function bestFrom(E, s, P) {
+    let best = null;
+    const go = (i, j, cost, skips, subs) => {
+      if (cost > Math.min(MAX_COST, 0.3 * P.length)) return;   // 短い進行ほど、崩れを許す幅を小さくする
+      if (j === P.length) { if (!best || cost < best.cost) best = { end: i - 1, cost, skips, subs }; return; }
+      if (i >= E.length) return;
+      const e = E[i], p = P[j];
+      if (e.rel === p.rel) {
+        const c = setCost(e.fams, p.fams);
+        if (c < Infinity) go(i + 1, j + 1, cost + c, skips, subs + (c >= 0.4 ? 1 : 0));
+      }
+      if (j > 0 && skips < MAX_SKIPS) {
+        const nx = E[i + 1];
+        const two = e.fams.has('min') && nx && nx.fams.has('dom') && mod(nx.rel - e.rel, 12) === 5 && mod(p.rel - nx.rel, 12) === 5;
+        if (ornamental(e, p) || two) go(i + 1, j, cost + SKIP_COST, skips + 1, subs);
+      }
+    };
+    go(s, 0, 0, 0, 0);
+    return best;
+  }
+  // seq:b.seq(rel・fam・bpc を持つ)。戻り値の from・to は b.seq の位置
   function matchProgs(seq) {
+    const E = toEvents(seq.map(x => ({ rel: x.rel, bass: x.bpc != null ? mod(x.bpc - (x.pc - x.rel), 12) : x.rel, fam: x.fam })));
     const found = [];
     patterns().forEach(p => {
-      for (let i = 0; i + p.seq.length <= seq.length; i++) {
-        if (p.seq.every((x, j) => seq[i + j].rel === x.rel && compat(seq[i + j].fam, x.fam))) found.push({ id: p.id, name: p.name, mood: p.mood, at: i, len: p.seq.length });
+      for (let s = 0; s < E.length; s++) {
+        const r = bestFrom(E, s, p.seq);
+        if (!r) continue;
+        const loose = r.skips > 0 || r.subs > 0;
+        found.push({ id: p.id, name: p.name, label: p.name + (loose ? '(変形)' : ''), mood: p.mood, loose, cost: r.cost,
+          s, e: r.end, len: p.seq.length, from: E[s].first, to: E[r.end].last });
       }
     });
-    found.sort((a, b) => b.len - a.len || a.at - b.at);
+    // 長い進行・減点の少ないものを優先し、重ならないように選ぶ
+    found.sort((a, b) => b.len - a.len || a.cost - b.cost || a.s - b.s);
     const used = new Set(), keep = [];
     found.forEach(f => {
-      let free = true;
-      for (let k = f.at; k < f.at + f.len; k++) if (used.has(k)) free = false;
-      if (!free) return;
-      for (let k = f.at; k < f.at + f.len; k++) used.add(k);
+      for (let k = f.s; k <= f.e; k++) if (used.has(k)) return;
+      for (let k = f.s; k <= f.e; k++) used.add(k);
       keep.push(f);
     });
-    return keep.sort((a, b) => a.at - b.at);
+    return keep.sort((a, b) => a.from - b.from);
   }
 
   /* ---------- 5. 技法を見つける ---------- */
@@ -323,10 +396,7 @@ const Analyzer = (() => {
         outCount.total++; if (!x.dia) outCount.n++;
       });
       b.seq = dedupe(b.items.filter(x => !x.bad), x => x.sym);
-      b.progs = matchProgs(dedupe(b.seq, x => x.rel + x.fam).map(x => ({ rel: x.rel, fam: x.fam })));
-      // 照合は rel+fam で詰めた並びで行うので、位置を b.seq に戻す
-      const packed = dedupe(b.seq.map((x, i) => ({ ...x, i })), x => x.rel + x.fam);
-      b.progs.forEach(p => { p.from = packed[p.at].i; p.to = (packed[p.at + p.len] ? packed[p.at + p.len].i : b.seq.length) - 1; });
+      b.progs = matchProgs(b.seq);
       b.tech = findTech(b.seq, key, bi);
     });
     // 転調
@@ -402,7 +472,7 @@ const Analyzer = (() => {
       const names = uniq(b.progs.map(p => p.name));
       if (names.length) {
         const cnt = id => b.progs.filter(p => p.id === id).length;
-        parts.push(uniq(b.progs.map(p => p.id)).map(id => { const p = b.progs.find(x => x.id === id); return p.name + (cnt(id) > 1 ? `(${cnt(id)}回)` : ''); }).join('、') + 'を使う。');
+        parts.push(uniq(b.progs.map(p => p.id)).map(id => { const p = b.progs.find(x => x.id === id && !x.loose) || b.progs.find(x => x.id === id); return p.label + (cnt(id) > 1 ? `(${cnt(id)}回)` : ''); }).join('、') + 'を使う。');
       } else if (b.seq.length) {
         parts.push(`${b.seq[0].deg} から始まる。`);
       }

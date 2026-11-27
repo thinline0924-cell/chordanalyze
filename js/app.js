@@ -344,7 +344,7 @@ function anaResult(r) {
         // くくりの両端の印は、進行の本当の始まりと終わりだけ(行をまたぐときは途中を開いたままにする)
         const brc = br ? ` br${ii === br.a ? ' br-s' : ''}${ii === br.z ? ' br-e' : ''}` : '';
         const brSpan = br && ii === br.a ? line.slice(k).filter(([, j]) => j <= br.z).length : 0;
-        const brl = br && ii === br.a ? `<a class="br-l" href="#progression" data-go="progression:${br.p.id}" style="--span:${brSpan}" title="${esc(br.p.name)}">${esc(br.p.name)}</a>` : '';
+        const brl = br && ii === br.a ? `<a class="br-l" href="#progression" data-go="progression:${br.p.id}" style="--span:${brSpan}" title="${esc(br.p.label)}">${esc(br.p.label)}</a>` : '';
         if (x.bad) return `<div class="cell${brc}">${brl}<span class="ch bad" data-pid="${pid}" data-ci="${ii}"><span class="d">?</span><span class="n">${esc(x.sym)}</span></span></div>`;
         const name = S.av === 'sel' ? chordOf(x.tok, kp, b.key.mode).name : Analyzer.pretty(x.sym);
         const mk = marks.get(x);

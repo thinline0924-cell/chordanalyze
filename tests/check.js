@@ -76,6 +76,25 @@ if (!r.blocks[0].progs.some(p => p.id === 'axis')) fail('Ⅰ–Ⅴ–Ⅵm–Ⅳ 
 if (!r.blocks[2].progs.some(p => p.id === 'oudou')) fail('王道進行が見つからない');
 if (r.blocks[1].items[3].deg !== 'Ⅵ7') fail('度数', r.blocks[1].items[3].deg);
 if (!r.highlights.length || !/転調/.test(r.highlights[0].text)) fail('聴きどころの先頭が転調でない');
+// 柔軟な照合:sus4・7th・経過的なコードが挟まっても、元の進行として見つける。関係ない並びは見つけない
+const FLEX = [
+  ['C G Gsus4 G Am Em F C F G7sus4 G7', 'canon'],
+  ['C G E7 Am Em F C F G', 'canon'],
+  ['C G/B Am Em/G F C/E F G', 'canon'],
+  ['FM7 G7sus4 G7 Em7 Am7', 'oudou'],
+  ['FM7 G7 E7 Am', 'oudou'],
+  ['FM7 G7 Em7 Bb7 Am7', 'oudou'],
+  ['Am F G Dm7 G7 C', 'komuro'],
+  ['CM7 A7 Dm7 G7 CM7', 'junkan'],
+  ['Dm7 G7sus4 G7 CM7', 'j251'],
+  ['C Dm Em F', null],
+  ['C Eb Ab Db', null],
+];
+FLEX.forEach(([line, want]) => {
+  const got = A.analyzeSong({ sections: [{ label: '', lines: [line.split(' ')] }] }).blocks[0].progs;
+  if (want && !got.some(p => p.id === want)) fail('柔軟な照合で見つからない', line, want, got.map(p => p.id).join());
+  if (!want && got.length) fail('柔軟な照合で見つけすぎ', line, got.map(p => p.id).join());
+});
 // マイナーキーの曲
 const rm = A.analyzeSong({ sections: [{ label: '', lines: [['Am', 'Dm', 'E7', 'Am'], ['F', 'G', 'E7', 'Am']] }] });
 if (rm.key.name !== 'Am') fail('マイナーキーの判定', rm.key.name);
